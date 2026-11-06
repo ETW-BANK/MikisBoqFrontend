@@ -25,6 +25,8 @@ export function RateAnalysisDetailPage() {
     )
   }
 
+  const hasProjectInfo = ra.project || ra.location || ra.client || ra.consultant || ra.contractor || ra.remark
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -59,6 +61,20 @@ export function RateAnalysisDetailPage() {
         <Stat label="Performance" value={`${ra.performanceRatePerHour.toFixed(2)} ${ra.unitCode}/hr`} />
       </div>
 
+      {hasProjectInfo && (
+        <Card>
+          <CardHeader><CardTitle>Project Info</CardTitle></CardHeader>
+          <CardContent className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3">
+            {ra.project && <div><span className="text-gray-500">Project:</span> {ra.project}</div>}
+            {ra.location && <div><span className="text-gray-500">Location:</span> {ra.location}</div>}
+            {ra.client && <div><span className="text-gray-500">Client:</span> {ra.client}</div>}
+            {ra.consultant && <div><span className="text-gray-500">Consultant:</span> {ra.consultant}</div>}
+            {ra.contractor && <div><span className="text-gray-500">Contractor:</span> {ra.contractor}</div>}
+            {ra.remark && <div><span className="text-gray-500">Remark:</span> {ra.remark}</div>}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle>Components</CardTitle></CardHeader>
         <CardContent>
@@ -70,6 +86,7 @@ export function RateAnalysisDetailPage() {
                 <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Qty</th>
                 <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">UF</th>
                 <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Rate</th>
+                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Additional</th>
                 <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
               </tr>
             </thead>
@@ -81,6 +98,9 @@ export function RateAnalysisDetailPage() {
                   <td className="py-2 text-right font-mono">{c.quantity}</td>
                   <td className="py-2 text-right font-mono">{c.utilizationFactor}</td>
                   <td className="py-2 text-right font-mono">{c.indexedRate.amount.toFixed(2)}</td>
+                  <td className="py-2 text-right font-mono">
+                    {c.additionalCost ? c.additionalCost.amount.toFixed(2) : '—'}
+                  </td>
                   <td className="py-2 text-right font-mono">{c.amount.amount.toFixed(2)}</td>
                 </tr>
               ))}

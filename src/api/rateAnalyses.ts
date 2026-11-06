@@ -14,13 +14,21 @@ export interface RateComponentDto {
   indexedRate: MoneyDto
   amount: MoneyDto
   materialCode: string | null
+  additionalCost: MoneyDto | null      // NEW
 }
 
 export interface RateAnalysisDto {
   id: string
+  linkedProjectId: string | null       // NEW
   code: string
   description: string
   unitCode: string
+  project: string
+  location: string
+  client: string
+  consultant: string
+  contractor: string
+  remark: string
   totalWorksToBeExecuted: number
   assumedTimeInHours: number
   performanceRatePerHour: number
@@ -52,6 +60,7 @@ export interface RateComponentInput {
   indexedRate?: number
   materialCode?: string
   overrideRate?: number
+  additionalCost?: number               // NEW
 }
 
 export interface CreateRateAnalysisRequest {
@@ -61,6 +70,13 @@ export interface CreateRateAnalysisRequest {
   totalWorks: number
   assumedTimeHours: number
   overheadPercent: number
+  linkedProjectId?: string | null        // NEW
+  project?: string
+  location?: string
+  client?: string
+  consultant?: string
+  contractor?: string
+  remark?: string
   components: RateComponentInput[]
 }
 

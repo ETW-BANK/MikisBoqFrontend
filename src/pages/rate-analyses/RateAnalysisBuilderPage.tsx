@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2 } from 'lucide-react'
 import { useMaterials } from '@/hooks/useMaterials'
-import { useCreateRateAnalysis } from '@/hooks/useRateAnalyses'
+import { useRateAnalyses, useCreateRateAnalysis } from '@/hooks/useRateAnalyses'
+import { useProjects } from '@/hooks/useProjects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +24,7 @@ interface BuilderComponent {
   quantity: number
   utilizationFactor: number
   indexedRate: number
+  additionalCost?: number
 }
 
 function newComponent(type: ComponentType): BuilderComponent {
@@ -30,23 +32,37 @@ function newComponent(type: ComponentType): BuilderComponent {
     id: crypto.randomUUID(),
     type,
     unitCode: type === 'Material' ? 'm3' : 'hr',
-    quantity: type === 'Material' ? 1 : 1,
+    quantity: 1,
     utilizationFactor: 1,
     indexedRate: 0,
+    additionalCost: 0,
   }
 }
 
 export function RateAnalysisBuilderPage() {
   const navigate = useNavigate()
   const { data: materials = [] } = useMaterials()
+  const { data: projects = [] } = useProjects()
   const mutation = useCreateRateAnalysis()
 
+  // Header fields
   const [code, setCode] = useState('')
   const [description, setDescription] = useState('')
   const [unitCode, setUnitCode] = useState('m2')
   const [totalWorks, setTotalWorks] = useState('1')
   const [assumedTime, setAssumedTime] = useState('8')
   const [overheadPercent, setOverheadPercent] = useState('30')
+
+  // Project Info fields
+  const [linkedProjectId, setLinkedProjectId] = useState('')
+  const [projectName, setProjectName] = useState('')
+  const [location, setLocation] = useState('')
+  const [client, setClient] = useState('')
+  const [consultant, setConsultant] = useState('')
+  const [contractor, setContractor] = useState('')
+  const [remark, setRemark] = useState('Normal time')
+
+  // Components
   const [components, setComponents] = useState<BuilderComponent[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -54,12 +70,11 @@ export function RateAnalysisBuilderPage() {
   const totalWorksNum = parseFloat(totalWorks) || 0
   const assumedTimeNum = parseFloat(assumedTime) || 0
   const overheadNum = parseFloat(overheadPercent) || 0
-  const performanceRate =
-    assumedTimeNum > 0 ? totalWorksNum / assumedTimeNum : 0
+  const performanceRate = assumedTimeNum > 0 ? totalWorksNum / assumedTimeNum : 0
 
   const materialTotal = components
     .filter((c) => c.type === 'Material')
-    .reduce((sum, c) => sum + c.indexedRate * c.quantity, 0)
+    .reduce((sum, c) => sum + (c.indexedRate * c.quantity) + (c.additionalCost ?? 0), 0)
 
   const labourTotal = components
     .filter((c) => c.type === 'Labour')
@@ -89,15 +104,23 @@ export function RateAnalysisBuilderPage() {
     setComponents(components.filter((c) => c.id !== id))
   }
 
-  const handleMaterialSelect = (id: string, code: string) => {
-    const mat = materials.find((m) => m.code === code)
+  const handleMaterialSelect = (id: string, matCode: string) => {
+    const mat = materials.find((m) => m.code === matCode)
     if (!mat) return
     updateComponent(id, {
-      materialCode: code,
+      materialCode: matCode,
       description: mat.name,
       unitCode: mat.unitCode,
       indexedRate: mat.currentRate.amount,
     })
+  }
+
+  const handleProjectSelect = (pid: string) => {
+    setLinkedProjectId(pid)
+    const proj = projects.find((p) => p.id === pid)
+    if (proj) {
+      setProjectName(proj.name)
+    }
   }
 
   const handleSave = async () => {
@@ -117,6 +140,13 @@ export function RateAnalysisBuilderPage() {
         totalWorks: totalWorksNum,
         assumedTimeHours: assumedTimeNum,
         overheadPercent: overheadNum,
+        linkedProjectId: linkedProjectId || null,
+        project: projectName.trim() || undefined,
+        location: location.trim() || undefined,
+        client: client.trim() || undefined,
+        consultant: consultant.trim() || undefined,
+        contractor: contractor.trim() || undefined,
+        remark: remark.trim() || undefined,
         components: components.map<RateComponentInput>((c) => {
           if (c.type === 'Material') {
             return {
@@ -124,6 +154,7 @@ export function RateAnalysisBuilderPage() {
               materialCode: c.materialCode!,
               quantity: c.quantity,
               utilizationFactor: c.utilizationFactor,
+              additionalCost: c.additionalCost ?? 0,
             }
           }
           return {
@@ -163,6 +194,7 @@ export function RateAnalysisBuilderPage() {
         </div>
       </div>
 
+      {/* HEADER CARD */}
       <Card>
         <CardHeader>
           <CardTitle>Header</CardTitle>
@@ -184,17 +216,14 @@ export function RateAnalysisBuilderPage() {
               className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
             >
               {UNIT_OPTIONS.map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
+                <option key={u} value={u}>{u}</option>
               ))}
             </select>
           </div>
           <div>
             <Label>Total Works *</Label>
             <Input
-              type="number"
-              step="0.01"
+              type="number" step="0.01"
               value={totalWorks}
               onChange={(e) => setTotalWorks(e.target.value)}
             />
@@ -210,8 +239,7 @@ export function RateAnalysisBuilderPage() {
           <div>
             <Label>Assumed Time (hrs) *</Label>
             <Input
-              type="number"
-              step="0.01"
+              type="number" step="0.01"
               value={assumedTime}
               onChange={(e) => setAssumedTime(e.target.value)}
             />
@@ -219,8 +247,7 @@ export function RateAnalysisBuilderPage() {
           <div>
             <Label>Overhead % *</Label>
             <Input
-              type="number"
-              step="0.01"
+              type="number" step="0.01"
               value={overheadPercent}
               onChange={(e) => setOverheadPercent(e.target.value)}
             />
@@ -232,7 +259,55 @@ export function RateAnalysisBuilderPage() {
         </CardContent>
       </Card>
 
-      {/* MATERIALS */}
+      {/* PROJECT INFO CARD */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Project Info</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Link to Project (optional)</Label>
+            <select
+              value={linkedProjectId}
+              onChange={(e) => handleProjectSelect(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">-- No project (standalone RA) --</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div>
+              <Label>Project</Label>
+              <Input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="e.g., Dino Tower" />
+            </div>
+            <div>
+              <Label>Location</Label>
+              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., Addis Ababa" />
+            </div>
+            <div>
+              <Label>Client</Label>
+              <Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="e.g., Dino Real Estate" />
+            </div>
+            <div>
+              <Label>Consultant</Label>
+              <Input value={consultant} onChange={(e) => setConsultant(e.target.value)} placeholder="e.g., Abebe Consulting" />
+            </div>
+            <div>
+              <Label>Contractor</Label>
+              <Input value={contractor} onChange={(e) => setContractor(e.target.value)} placeholder="e.g., XYZ Construction" />
+            </div>
+            <div>
+              <Label>Remark</Label>
+              <Input value={remark} onChange={(e) => setRemark(e.target.value)} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* COMPONENTS */}
       <ComponentSection
         title="Materials (1.01)"
         type="Material"
@@ -245,7 +320,6 @@ export function RateAnalysisBuilderPage() {
         onMaterialSelect={handleMaterialSelect}
       />
 
-      {/* LABOUR */}
       <ComponentSection
         title="Labour (1.02)"
         type="Labour"
@@ -256,7 +330,6 @@ export function RateAnalysisBuilderPage() {
         onRemove={removeComponent}
       />
 
-      {/* EQUIPMENT */}
       <ComponentSection
         title="Equipment (1.03)"
         type="Equipment"
@@ -278,18 +351,9 @@ export function RateAnalysisBuilderPage() {
           <TotalRow label="C = Direct Equipment Unit Cost" value={directEquipment} />
           <div className="border-t border-gray-200 pt-2" />
           <TotalRow label="Direct Unit Cost (A + B + C)" value={directUnitCost} bold />
-          <TotalRow
-            label={`Overhead & Profit (${overheadNum}%)`}
-            value={overhead}
-          />
+          <TotalRow label={`Overhead & Profit (${overheadNum}%)`} value={overhead} />
           <div className="border-t border-gray-200 pt-2" />
-          <TotalRow
-            label="Total Unit Rate"
-            value={totalRate}
-            bold
-            highlight
-            suffix={`ETB/${unitCode}`}
-          />
+          <TotalRow label="Total Unit Rate" value={totalRate} bold highlight suffix={`ETB/${unitCode}`} />
         </CardContent>
       </Card>
 
@@ -303,15 +367,7 @@ export function RateAnalysisBuilderPage() {
 // ---------- Sub-components ----------
 
 function ComponentSection({
-  title,
-  type,
-  components,
-  materials,
-  subtotal,
-  onAdd,
-  onUpdate,
-  onRemove,
-  onMaterialSelect,
+  title, type, components, materials, subtotal, onAdd, onUpdate, onRemove, onMaterialSelect,
 }: {
   title: string
   type: ComponentType
@@ -323,13 +379,15 @@ function ComponentSection({
   onRemove: (id: string) => void
   onMaterialSelect?: (id: string, code: string) => void
 }) {
+  // Column layout per type
+  const isMaterial = type === 'Material'
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>{title}</CardTitle>
         <Button size="sm" variant="outline" onClick={onAdd}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add {type}
+          <Plus className="mr-2 h-4 w-4" /> Add {type}
         </Button>
       </CardHeader>
       <CardContent>
@@ -339,16 +397,42 @@ function ComponentSection({
           </p>
         ) : (
           <div className="space-y-2">
+            {/* Column headers */}
+            <div className="grid grid-cols-12 gap-2 px-2 text-xs font-medium uppercase text-gray-500">
+              {isMaterial ? (
+                <>
+                  <div className="col-span-4">Material</div>
+                  <div className="col-span-1 text-center">Qty</div>
+                  <div className="col-span-1 text-center">UF</div>
+                  <div className="col-span-1 text-center">Add. Cost</div>
+                  <div className="col-span-2 text-right">Rate</div>
+                  <div className="col-span-2 text-right">Amount</div>
+                  <div className="col-span-1" />
+                </>
+              ) : (
+                <>
+                  <div className="col-span-3">Description</div>
+                  <div className="col-span-1 text-center">Qty</div>
+                  <div className="col-span-1 text-center">UF</div>
+                  <div className="col-span-1 text-center">Unit</div>
+                  <div className="col-span-2 text-center">Rate</div>
+                  <div className="col-span-2 text-right">Amount</div>
+                  <div className="col-span-2" />
+                </>
+              )}
+            </div>
+
+            {/* Data rows */}
             {components.map((c) => (
               <div
                 key={c.id}
                 className="grid grid-cols-12 gap-2 rounded-md border border-gray-200 bg-gray-50 p-2"
               >
-                {type === 'Material' && materials ? (
+                {isMaterial && materials ? (
                   <select
                     value={c.materialCode ?? ''}
                     onChange={(e) => onMaterialSelect?.(c.id, e.target.value)}
-                    className="col-span-5 flex h-9 rounded-md border border-gray-300 bg-white px-2 text-sm"
+                    className="col-span-4 flex h-9 rounded-md border border-gray-300 bg-white px-2 text-sm"
                   >
                     <option value="">-- Select material --</option>
                     {materials.map((m) => (
@@ -362,30 +446,37 @@ function ComponentSection({
                     placeholder="Description"
                     value={c.description ?? ''}
                     onChange={(e) => onUpdate(c.id, { description: e.target.value })}
-                    className="col-span-4 h-9"
+                    className="col-span-3 h-9"
                   />
                 )}
 
                 <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="Qty"
+                  type="number" step="0.01" placeholder="Qty"
                   value={c.quantity}
                   onChange={(e) => onUpdate(c.id, { quantity: parseFloat(e.target.value) || 0 })}
                   className="col-span-1 h-9"
                 />
+
                 <Input
-                  type="number"
-                  step="0.001"
-                  placeholder="UF"
+                  type="number" step="0.001" placeholder="UF"
                   value={c.utilizationFactor}
-                  onChange={(e) =>
-                    onUpdate(c.id, { utilizationFactor: parseFloat(e.target.value) || 0 })
-                  }
+                  onChange={(e) => onUpdate(c.id, { utilizationFactor: parseFloat(e.target.value) || 0 })}
                   className="col-span-1 h-9"
                 />
 
-                {type !== 'Material' ? (
+                {isMaterial ? (
+                  <>
+                    <Input
+                      type="number" step="0.01" placeholder="Add. Cost"
+                      value={c.additionalCost ?? 0}
+                      onChange={(e) => onUpdate(c.id, { additionalCost: parseFloat(e.target.value) || 0 })}
+                      className="col-span-1 h-9"
+                    />
+                    <div className="col-span-2 flex items-center justify-end pr-2 text-sm text-gray-600">
+                      {c.indexedRate.toFixed(2)}
+                    </div>
+                  </>
+                ) : (
                   <>
                     <Input
                       placeholder="Unit"
@@ -394,26 +485,19 @@ function ComponentSection({
                       className="col-span-1 h-9"
                     />
                     <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="Rate"
+                      type="number" step="0.01" placeholder="Rate"
                       value={c.indexedRate}
-                      onChange={(e) =>
-                        onUpdate(c.id, { indexedRate: parseFloat(e.target.value) || 0 })
-                      }
+                      onChange={(e) => onUpdate(c.id, { indexedRate: parseFloat(e.target.value) || 0 })}
                       className="col-span-2 h-9"
                     />
                   </>
-                ) : (
-                  <div className="col-span-3 flex items-center justify-end pr-2 text-sm text-gray-600">
-                    Rate: {c.indexedRate.toFixed(2)}
-                  </div>
                 )}
 
                 <div className="col-span-2 flex items-center justify-end gap-2">
                   <span className="font-mono text-sm">
                     {(
-                      c.indexedRate * c.quantity * (type === 'Material' ? 1 : c.utilizationFactor)
+                      (c.indexedRate * c.quantity * (isMaterial ? 1 : c.utilizationFactor)) +
+                      (isMaterial ? (c.additionalCost ?? 0) : 0)
                     ).toFixed(2)}
                   </span>
                   <Button
@@ -427,6 +511,7 @@ function ComponentSection({
                 </div>
               </div>
             ))}
+
             <div className="flex justify-end pt-2 text-sm font-medium">
               Subtotal: {subtotal.toFixed(2)} ETB
             </div>
@@ -436,13 +521,8 @@ function ComponentSection({
     </Card>
   )
 }
-
 function TotalRow({
-  label,
-  value,
-  bold,
-  highlight,
-  suffix,
+  label, value, bold, highlight, suffix,
 }: {
   label: string
   value: number
@@ -453,11 +533,7 @@ function TotalRow({
   return (
     <div className="flex justify-between text-sm">
       <span className={bold ? 'font-semibold' : 'text-gray-600'}>{label}</span>
-      <span
-        className={`font-mono ${bold ? 'font-semibold' : ''} ${
-          highlight ? 'text-brand text-lg' : ''
-        }`}
-      >
+      <span className={`font-mono ${bold ? 'font-semibold' : ''} ${highlight ? 'text-brand text-lg' : ''}`}>
         {value.toFixed(2)} {suffix ?? 'ETB'}
       </span>
     </div>
