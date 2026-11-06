@@ -1,8 +1,12 @@
 import axios from 'axios'
 import { clearAuth, getToken } from '@/lib/auth'
 
+const baseURL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? '/api' : 'https://mikisapi.runasp.net/api')
+
 export const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },

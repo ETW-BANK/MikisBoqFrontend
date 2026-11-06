@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS === 'true' ? '/MikisBoqFrontend/' : '/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -13,9 +14,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5019',
+        target: 'https://mikisapi.runasp.net',
         changeOrigin: true,
-        secure: false,
+        secure: true,
       },
     },
   },

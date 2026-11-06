@@ -2,6 +2,12 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## API configuration
+
+Production builds use `https://mikisapi.runasp.net/api` by default. Local development continues to use the Vite `/api` proxy configured in `vite.config.ts`. Set `VITE_API_BASE_URL` to override the API base URL when needed.
+
+GitHub Pages deployments run from the `main` branch via `.github/workflows/deploy.yml`. The site is published at `https://etw-bank.github.io/MikisBoqFrontend/`.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

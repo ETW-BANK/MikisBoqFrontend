@@ -31,7 +31,7 @@ const router = createBrowserRouter([
       },
     ],
   },
-])
+], { basename: import.meta.env.BASE_URL })
 
 export default function App() {
   return <RouterProvider router={router} />
