@@ -6,7 +6,7 @@ This template provides a minimal setup to get React working in Vite with HMR and
 
 Production builds use `https://mikisapi.runasp.net/api` by default. Local development continues to use the Vite `/api` proxy configured in `vite.config.ts`. Set `VITE_API_BASE_URL` to override the API base URL when needed.
 
-GitHub Pages deployments run from the `main` branch via `.github/workflows/deploy.yml`. The site is published at `https://etw-bank.github.io/MikisBoqFrontend/`.
+GitHub Pages serves the built frontend from the root of the `gh-pages` branch at `https://etw-bank.github.io/MikisBoqFrontend/`. To publish an update, run `npm run build`, then publish the contents of `dist` to the root of `gh-pages` and push that branch. The API remains hosted separately.
 
 Currently, two official plugins are available:
 
