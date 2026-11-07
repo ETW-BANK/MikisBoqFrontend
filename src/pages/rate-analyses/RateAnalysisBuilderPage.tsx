@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { Plus, Trash2 } from 'lucide-react'
 import { useMaterials } from '@/hooks/useMaterials'
-import { useRateAnalyses, useCreateRateAnalysis } from '@/hooks/useRateAnalyses'
+import { useCreateRateAnalysis, useRateAnalysis, useUpdateRateAnalysis } from '@/hooks/useRateAnalyses'
 import { useProjects } from '@/hooks/useProjects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { RateComponentInput } from '@/api/rateAnalyses'
+import type { RateAnalysisDto, RateComponentInput } from '@/api/rateAnalyses'
 import type { Material } from '@/api/materials'
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { ErrorMessage } from '@/components/shared/ErrorMessage'
 
-const UNIT_OPTIONS = ['m2', 'm3', 'm', 'kg', 'ton', 'ea', 'ls', 'hr', 'day']
-
-type ComponentType = 'Material' | 'Labour' | 'Equipment'
+type ComponentType = 'Material' | 'Labour' | 'Equipment' | 'Transport'
+const UNIT_OPTIONS = ['EA', 'M3', 'M2', 'LM', 'KG', 'TON', 'HR', 'DAY', 'LS']
+const COMPONENT_TYPES: readonly ComponentType[] = ['Material', 'Labour', 'Equipment', 'Transport']
 
 interface BuilderComponent {
   id: string
@@ -21,17 +24,20 @@ interface BuilderComponent {
   materialCode?: string
   description?: string
   unitCode: string
+  currencyCode: string
   quantity: number
   utilizationFactor: number
   indexedRate: number
   additionalCost?: number
+  overrideRate?: string
 }
 
 function newComponent(type: ComponentType): BuilderComponent {
   return {
     id: crypto.randomUUID(),
     type,
-    unitCode: type === 'Material' ? 'm3' : 'hr',
+    unitCode: type === 'Material' ? 'M3' : 'HR',
+    currencyCode: 'ETB',
     quantity: 1,
     utilizationFactor: 1,
     indexedRate: 0,
@@ -40,30 +46,61 @@ function newComponent(type: ComponentType): BuilderComponent {
 }
 
 export function RateAnalysisBuilderPage() {
+  const { id } = useParams<{ id: string }>()
+  const rateQuery = useRateAnalysis(id)
+  if (id && rateQuery.isLoading) return <LoadingSpinner label="Loading rate analysis..." />
+  if (id && rateQuery.error) return <ErrorMessage error={rateQuery.error} />
+  if (id && !rateQuery.data) return <ErrorMessage error="Rate analysis not found." />
+  const invalidType = rateQuery.data?.components.find((component) => !isComponentType(component.componentType))
+  if (invalidType) return <ErrorMessage error={`Unsupported rate component type: ${invalidType.componentType}`} />
+
+  return <RateAnalysisForm key={id ?? 'new'} id={id} rateAnalysis={rateQuery.data} />
+}
+
+function isComponentType(value: string): value is ComponentType {
+  return COMPONENT_TYPES.some((type) => type === value)
+}
+
+function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: RateAnalysisDto }) {
   const navigate = useNavigate()
   const { data: materials = [] } = useMaterials()
   const { data: projects = [] } = useProjects()
-  const mutation = useCreateRateAnalysis()
+  const create = useCreateRateAnalysis()
+  const update = useUpdateRateAnalysis()
+  const mutation = id ? update : create
 
   // Header fields
-  const [code, setCode] = useState('')
-  const [description, setDescription] = useState('')
-  const [unitCode, setUnitCode] = useState('m2')
-  const [totalWorks, setTotalWorks] = useState('1')
-  const [assumedTime, setAssumedTime] = useState('8')
-  const [overheadPercent, setOverheadPercent] = useState('30')
+  const [code, setCode] = useState(rateAnalysis?.code ?? '')
+  const [description, setDescription] = useState(rateAnalysis?.description ?? '')
+  const [unitCode, setUnitCode] = useState(rateAnalysis?.unitCode ?? 'M2')
+  const [totalWorks, setTotalWorks] = useState(String(rateAnalysis?.totalWorksToBeExecuted ?? 1))
+  const [assumedTime, setAssumedTime] = useState(String(rateAnalysis?.assumedTimeInHours ?? 8))
+  const [overheadPercent, setOverheadPercent] = useState(String(
+    rateAnalysis && rateAnalysis.directUnitCost.amount > 0
+      ? rateAnalysis.overheadAndProfit.amount / rateAnalysis.directUnitCost.amount * 100
+      : 0
+  ))
 
-  // Project Info fields
-  const [linkedProjectId, setLinkedProjectId] = useState('')
-  const [projectName, setProjectName] = useState('')
-  const [location, setLocation] = useState('')
-  const [client, setClient] = useState('')
-  const [consultant, setConsultant] = useState('')
-  const [contractor, setContractor] = useState('')
-  const [remark, setRemark] = useState('Normal time')
+  const [linkedProjectId, setLinkedProjectId] = useState(rateAnalysis?.linkedProjectId ?? '')
+  const [remark, setRemark] = useState(rateAnalysis?.remark ?? '')
 
-  // Components
-  const [components, setComponents] = useState<BuilderComponent[]>([])
+  const [components, setComponents] = useState<BuilderComponent[]>(() =>
+    rateAnalysis?.components.flatMap((component) => isComponentType(component.componentType) ? [{
+      id: crypto.randomUUID(),
+      type: component.componentType,
+      materialCode: component.materialCode ?? undefined,
+      description: component.description,
+      unitCode: component.unitCode,
+      currencyCode: component.indexedRate.currencyCode,
+      quantity: component.quantity,
+      utilizationFactor: component.utilizationFactor,
+      indexedRate: component.indexedRate.amount,
+      additionalCost: component.additionalCost?.amount ?? 0,
+      overrideRate: component.componentType === 'Material'
+        ? String(component.indexedRate.amount)
+        : undefined,
+    }] : []) ?? []
+  )
   const [error, setError] = useState<string | null>(null)
 
   // ---------- LIVE MATH ----------
@@ -72,9 +109,12 @@ export function RateAnalysisBuilderPage() {
   const overheadNum = parseFloat(overheadPercent) || 0
   const performanceRate = assumedTimeNum > 0 ? totalWorksNum / assumedTimeNum : 0
 
+  const componentRate = (component: BuilderComponent) =>
+    component.overrideRate?.trim() ? Number(component.overrideRate) : component.indexedRate
+
   const materialTotal = components
     .filter((c) => c.type === 'Material')
-    .reduce((sum, c) => sum + (c.indexedRate * c.quantity) + (c.additionalCost ?? 0), 0)
+    .reduce((sum, c) => sum + (componentRate(c) * c.quantity) + (c.additionalCost ?? 0), 0)
 
   const labourTotal = components
     .filter((c) => c.type === 'Labour')
@@ -83,10 +123,13 @@ export function RateAnalysisBuilderPage() {
   const equipmentTotal = components
     .filter((c) => c.type === 'Equipment')
     .reduce((sum, c) => sum + c.indexedRate * c.quantity * c.utilizationFactor, 0)
+  const transportTotal = components
+    .filter((c) => c.type === 'Transport')
+    .reduce((sum, c) => sum + c.indexedRate * c.quantity * c.utilizationFactor, 0)
 
   const directMaterial = materialTotal
   const directLabour = performanceRate > 0 ? labourTotal / performanceRate : 0
-  const directEquipment = performanceRate > 0 ? equipmentTotal / performanceRate : 0
+  const directEquipment = performanceRate > 0 ? (equipmentTotal + transportTotal) / performanceRate : 0
   const directUnitCost = directMaterial + directLabour + directEquipment
   const overhead = directUnitCost * (overheadNum / 100)
   const totalRate = directUnitCost + overhead
@@ -111,16 +154,14 @@ export function RateAnalysisBuilderPage() {
       materialCode: matCode,
       description: mat.name,
       unitCode: mat.unitCode,
+      currencyCode: mat.currentRate.currencyCode,
       indexedRate: mat.currentRate.amount,
+      overrideRate: '',
     })
   }
 
   const handleProjectSelect = (pid: string) => {
     setLinkedProjectId(pid)
-    const proj = projects.find((p) => p.id === pid)
-    if (proj) {
-      setProjectName(proj.name)
-    }
   }
 
   const handleSave = async () => {
@@ -128,12 +169,29 @@ export function RateAnalysisBuilderPage() {
 
     if (!code.trim()) return setError('Code is required')
     if (!description.trim()) return setError('Description is required')
-    if (totalWorksNum <= 0) return setError('Total works must be > 0')
-    if (assumedTimeNum <= 0) return setError('Assumed time must be > 0')
+    if (!Number.isFinite(totalWorksNum) || totalWorksNum <= 0) return setError('Total works must be > 0')
+    if (!Number.isFinite(assumedTimeNum) || assumedTimeNum <= 0) return setError('Assumed time must be > 0')
+    if (!Number.isFinite(overheadNum) || overheadNum < 0) return setError('Overhead percentage must be zero or greater.')
     if (components.length === 0) return setError('Add at least one component')
+    if (components.some((component) => !Number.isFinite(component.quantity) || component.quantity <= 0)) {
+      return setError('Every component quantity must be greater than zero.')
+    }
+    if (components.some((component) =>
+      !Number.isFinite(component.utilizationFactor) || component.utilizationFactor < 0
+    )) return setError('Component utilization factors must be zero or greater.')
+    if (components.some((component) => component.type === 'Material' && !component.materialCode)) {
+      return setError('Select a material for every material component.')
+    }
+    if (components.some((component) => component.type !== 'Material' &&
+      (!component.description?.trim() || !component.unitCode || !Number.isFinite(component.indexedRate) || component.indexedRate < 0))) {
+      return setError('Each labour, equipment, and transport component needs a description, unit, and non-negative rate.')
+    }
+    if (components.some((component) => component.overrideRate?.trim() && (!Number.isFinite(Number(component.overrideRate)) || Number(component.overrideRate) < 0))) {
+      return setError('Material override rates must be zero or greater.')
+    }
 
     try {
-      await mutation.mutateAsync({
+      const payload = {
         code: code.trim(),
         description: description.trim(),
         unitCode,
@@ -141,11 +199,6 @@ export function RateAnalysisBuilderPage() {
         assumedTimeHours: assumedTimeNum,
         overheadPercent: overheadNum,
         linkedProjectId: linkedProjectId || null,
-        project: projectName.trim() || undefined,
-        location: location.trim() || undefined,
-        client: client.trim() || undefined,
-        consultant: consultant.trim() || undefined,
-        contractor: contractor.trim() || undefined,
         remark: remark.trim() || undefined,
         components: components.map<RateComponentInput>((c) => {
           if (c.type === 'Material') {
@@ -155,6 +208,7 @@ export function RateAnalysisBuilderPage() {
               quantity: c.quantity,
               utilizationFactor: c.utilizationFactor,
               additionalCost: c.additionalCost ?? 0,
+              ...(c.overrideRate?.trim() ? { overrideRate: Number(c.overrideRate) } : {}),
             }
           }
           return {
@@ -166,30 +220,35 @@ export function RateAnalysisBuilderPage() {
             indexedRate: c.indexedRate,
           }
         }),
-      })
-      navigate('/rate-analyses')
+      }
+      if (id) await update.mutateAsync({ id, payload })
+      else await create.mutateAsync(payload)
+      navigate(id ? `/rate-analyses/${id}` : '/rate-analyses')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     }
   }
 
   const grouped = (type: ComponentType) => components.filter((c) => c.type === type)
+  const currencyCode = projects.find((project) => project.id === linkedProjectId)?.currencyCode
+    ?? components[0]?.currencyCode
+    ?? 'ETB'
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">New Rate Analysis</h1>
+          <h1 className="text-2xl font-bold">{id ? 'Edit Rate Analysis' : 'New Rate Analysis'}</h1>
           <p className="text-sm text-gray-500">
             Compose the cost breakdown. Totals calculate live.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => navigate('/rate-analyses')}>
+          <Button variant="outline" onClick={() => navigate(id ? `/rate-analyses/${id}` : '/rate-analyses')}>
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={mutation.isPending}>
-            {mutation.isPending ? 'Saving...' : 'Save Rate Analysis'}
+            {mutation.isPending ? 'Saving...' : id ? 'Save Changes' : 'Save Rate Analysis'}
           </Button>
         </div>
       </div>
@@ -262,11 +321,11 @@ export function RateAnalysisBuilderPage() {
       {/* PROJECT INFO CARD */}
       <Card>
         <CardHeader>
-          <CardTitle>Project Info</CardTitle>
+          <CardTitle>Project Link and Notes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label>Link to Project (optional)</Label>
+            <Label>Linked Project (optional)</Label>
             <select
               value={linkedProjectId}
               onChange={(e) => handleProjectSelect(e.target.value)}
@@ -278,31 +337,9 @@ export function RateAnalysisBuilderPage() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-            <div>
-              <Label>Project</Label>
-              <Input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="e.g., Dino Tower" />
-            </div>
-            <div>
-              <Label>Location</Label>
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., Addis Ababa" />
-            </div>
-            <div>
-              <Label>Client</Label>
-              <Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="e.g., Dino Real Estate" />
-            </div>
-            <div>
-              <Label>Consultant</Label>
-              <Input value={consultant} onChange={(e) => setConsultant(e.target.value)} placeholder="e.g., Abebe Consulting" />
-            </div>
-            <div>
-              <Label>Contractor</Label>
-              <Input value={contractor} onChange={(e) => setContractor(e.target.value)} placeholder="e.g., XYZ Construction" />
-            </div>
-            <div>
-              <Label>Remark</Label>
-              <Input value={remark} onChange={(e) => setRemark(e.target.value)} />
-            </div>
+          <div>
+            <Label>Remark</Label>
+            <Input value={remark} onChange={(e) => setRemark(e.target.value)} />
           </div>
         </CardContent>
       </Card>
@@ -314,6 +351,7 @@ export function RateAnalysisBuilderPage() {
         components={grouped('Material')}
         materials={materials}
         subtotal={materialTotal}
+        currencyCode={currencyCode}
         onAdd={() => addComponent('Material')}
         onUpdate={updateComponent}
         onRemove={removeComponent}
@@ -325,6 +363,7 @@ export function RateAnalysisBuilderPage() {
         type="Labour"
         components={grouped('Labour')}
         subtotal={labourTotal}
+        currencyCode={currencyCode}
         onAdd={() => addComponent('Labour')}
         onUpdate={updateComponent}
         onRemove={removeComponent}
@@ -335,7 +374,18 @@ export function RateAnalysisBuilderPage() {
         type="Equipment"
         components={grouped('Equipment')}
         subtotal={equipmentTotal}
+        currencyCode={currencyCode}
         onAdd={() => addComponent('Equipment')}
+        onUpdate={updateComponent}
+        onRemove={removeComponent}
+      />
+      <ComponentSection
+        title="Transport"
+        type="Transport"
+        components={grouped('Transport')}
+        subtotal={transportTotal}
+        currencyCode={currencyCode}
+        onAdd={() => addComponent('Transport')}
         onUpdate={updateComponent}
         onRemove={removeComponent}
       />
@@ -346,14 +396,14 @@ export function RateAnalysisBuilderPage() {
           <CardTitle>Live Calculation</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <TotalRow label="A = Direct Material Unit Cost" value={directMaterial} />
-          <TotalRow label="B = Direct Man Power Unit Cost" value={directLabour} />
-          <TotalRow label="C = Direct Equipment Unit Cost" value={directEquipment} />
+          <TotalRow label="A = Direct Material Unit Cost" value={directMaterial} suffix={currencyCode} />
+          <TotalRow label="B = Direct Man Power Unit Cost" value={directLabour} suffix={currencyCode} />
+          <TotalRow label="C = Direct Equipment and Transport Unit Cost" value={directEquipment} suffix={currencyCode} />
           <div className="border-t border-gray-200 pt-2" />
-          <TotalRow label="Direct Unit Cost (A + B + C)" value={directUnitCost} bold />
-          <TotalRow label={`Overhead & Profit (${overheadNum}%)`} value={overhead} />
+          <TotalRow label="Direct Unit Cost (A + B + C)" value={directUnitCost} bold suffix={currencyCode} />
+          <TotalRow label={`Overhead (${overheadNum}%)`} value={overhead} suffix={currencyCode} />
           <div className="border-t border-gray-200 pt-2" />
-          <TotalRow label="Total Unit Rate" value={totalRate} bold highlight suffix={`ETB/${unitCode}`} />
+          <TotalRow label="Total Unit Rate" value={totalRate} bold highlight suffix={`${currencyCode}/${unitCode}`} />
         </CardContent>
       </Card>
 
@@ -367,20 +417,34 @@ export function RateAnalysisBuilderPage() {
 // ---------- Sub-components ----------
 
 function ComponentSection({
-  title, type, components, materials, subtotal, onAdd, onUpdate, onRemove, onMaterialSelect,
+  title, type, components, materials, subtotal, currencyCode, onAdd, onUpdate, onRemove, onMaterialSelect,
 }: {
   title: string
   type: ComponentType
   components: BuilderComponent[]
   materials?: Material[]
   subtotal: number
+  currencyCode: string
   onAdd: () => void
   onUpdate: (id: string, patch: Partial<BuilderComponent>) => void
   onRemove: (id: string) => void
   onMaterialSelect?: (id: string, code: string) => void
 }) {
-  // Column layout per type
   const isMaterial = type === 'Material'
+  const isLabour = type === 'Labour'
+  const descriptionLabel = isMaterial
+    ? 'Material'
+    : isLabour
+      ? 'Labor by Trade'
+      : type === 'Equipment' ? 'Equipment Type' : 'Transport Description'
+  const rateLabel = isLabour ? 'Indexed Wage/hr' : type === 'Equipment' ? 'Rental/hr' : 'Rate'
+  const helperText = isMaterial
+    ? 'Enter the required quantity in the material unit. Additional cost can include transport, loading/unloading, and tax.'
+    : isLabour
+      ? 'Enter the trade and number of workers. UF adjusts for utilization; indexed wage/hr includes applicable allowances.'
+      : type === 'Equipment'
+        ? 'Enter the equipment type and number required. UF adjusts for utilization; rental/hr includes rental and related transport costs.'
+        : 'Enter the transport description and quantity. UF adjusts for utilization.'
 
   return (
     <Card>
@@ -391,6 +455,7 @@ function ComponentSection({
         </Button>
       </CardHeader>
       <CardContent>
+        <p className="mb-3 text-xs text-gray-500">{helperText}</p>
         {components.length === 0 ? (
           <p className="py-4 text-center text-sm text-gray-400">
             No {type.toLowerCase()} components. Click "Add {type}" above.
@@ -403,21 +468,19 @@ function ComponentSection({
                 <>
                   <div className="col-span-4">Material</div>
                   <div className="col-span-1 text-center">Qty</div>
-                  <div className="col-span-1 text-center">UF</div>
-                  <div className="col-span-1 text-center">Add. Cost</div>
-                  <div className="col-span-2 text-right">Rate</div>
+                  <div className="col-span-2 text-center">Additional Cost</div>
+                  <div className="col-span-2 text-right">Override Rate</div>
                   <div className="col-span-2 text-right">Amount</div>
                   <div className="col-span-1" />
                 </>
               ) : (
                 <>
-                  <div className="col-span-3">Description</div>
-                  <div className="col-span-1 text-center">Qty</div>
+                  <div className="col-span-4">{descriptionLabel}</div>
+                  <div className="col-span-1 text-center">No.</div>
                   <div className="col-span-1 text-center">UF</div>
-                  <div className="col-span-1 text-center">Unit</div>
-                  <div className="col-span-2 text-center">Rate</div>
-                  <div className="col-span-2 text-right">Amount</div>
-                  <div className="col-span-2" />
+                  <div className="col-span-2 text-center">{rateLabel}</div>
+                  <div className="col-span-3 text-right">Hourly Cost</div>
+                  <div className="col-span-1" />
                 </>
               )}
             </div>
@@ -443,49 +506,49 @@ function ComponentSection({
                   </select>
                 ) : (
                   <Input
-                    placeholder="Description"
+                    placeholder={descriptionLabel}
                     value={c.description ?? ''}
                     onChange={(e) => onUpdate(c.id, { description: e.target.value })}
-                    className="col-span-3 h-9"
+                    className="col-span-4 h-9"
                   />
                 )}
 
                 <Input
-                  type="number" step="0.01" placeholder="Qty"
+                  type="number" min="0.000001" step="any" placeholder={isMaterial ? 'Qty' : 'No.'}
                   value={c.quantity}
                   onChange={(e) => onUpdate(c.id, { quantity: parseFloat(e.target.value) || 0 })}
-                  className="col-span-1 h-9"
-                />
-
-                <Input
-                  type="number" step="0.001" placeholder="UF"
-                  value={c.utilizationFactor}
-                  onChange={(e) => onUpdate(c.id, { utilizationFactor: parseFloat(e.target.value) || 0 })}
                   className="col-span-1 h-9"
                 />
 
                 {isMaterial ? (
                   <>
                     <Input
-                      type="number" step="0.01" placeholder="Add. Cost"
+                      type="number" step="0.01" placeholder="Additional Cost"
+                      title="Transport, loading/unloading, tax, and other material costs"
                       value={c.additionalCost ?? 0}
                       onChange={(e) => onUpdate(c.id, { additionalCost: parseFloat(e.target.value) || 0 })}
-                      className="col-span-1 h-9"
+                      className="col-span-2 h-9"
                     />
-                    <div className="col-span-2 flex items-center justify-end pr-2 text-sm text-gray-600">
-                      {c.indexedRate.toFixed(2)}
-                    </div>
+                    <Input
+                      type="number" min="0" step="any"
+                      aria-label="Optional material rate override"
+                      placeholder={c.indexedRate.toFixed(2)}
+                      value={c.overrideRate ?? ''}
+                      onChange={(e) => onUpdate(c.id, { overrideRate: e.target.value })}
+                      className="col-span-2 h-9"
+                    />
                   </>
                 ) : (
                   <>
                     <Input
-                      placeholder="Unit"
-                      value={c.unitCode}
-                      onChange={(e) => onUpdate(c.id, { unitCode: e.target.value })}
+                      type="number" min="0" step="0.001" placeholder="UF"
+                      value={c.utilizationFactor}
+                      onChange={(e) => onUpdate(c.id, { utilizationFactor: parseFloat(e.target.value) || 0 })}
                       className="col-span-1 h-9"
                     />
                     <Input
-                      type="number" step="0.01" placeholder="Rate"
+                      type="number" min="0" step="any" placeholder={rateLabel}
+                      title={isLabour ? 'Hourly wage including applicable allowances' : 'Hourly rental including related transport costs'}
                       value={c.indexedRate}
                       onChange={(e) => onUpdate(c.id, { indexedRate: parseFloat(e.target.value) || 0 })}
                       className="col-span-2 h-9"
@@ -493,13 +556,15 @@ function ComponentSection({
                   </>
                 )}
 
-                <div className="col-span-2 flex items-center justify-end gap-2">
+                <div className={`flex items-center justify-end ${isMaterial ? 'col-span-2' : 'col-span-3'}`}>
                   <span className="font-mono text-sm">
                     {(
-                      (c.indexedRate * c.quantity * (isMaterial ? 1 : c.utilizationFactor)) +
+                      ((isMaterial && c.overrideRate?.trim() ? Number(c.overrideRate) : c.indexedRate) * c.quantity * (isMaterial ? 1 : c.utilizationFactor)) +
                       (isMaterial ? (c.additionalCost ?? 0) : 0)
                     ).toFixed(2)}
                   </span>
+                </div>
+                <div className="col-span-1 flex items-center justify-end">
                   <Button
                     size="icon"
                     variant="ghost"
@@ -513,7 +578,7 @@ function ComponentSection({
             ))}
 
             <div className="flex justify-end pt-2 text-sm font-medium">
-              Subtotal: {subtotal.toFixed(2)} ETB
+              Subtotal: {subtotal.toFixed(2)} {currencyCode}
             </div>
           </div>
         )}

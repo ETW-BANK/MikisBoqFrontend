@@ -17,7 +17,7 @@ export function DashboardPage() {
   })
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
-    queryFn: listProjects,
+    queryFn: () => listProjects(),
   })
   const { data: materials = [] } = useQuery({
     queryKey: ['materials'],

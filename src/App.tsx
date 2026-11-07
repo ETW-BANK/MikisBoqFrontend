@@ -23,6 +23,7 @@ const router = createBrowserRouter([
           { path: '/materials', element: <MaterialsPage /> },
           { path: '/rate-analyses', element: <RateAnalysesListPage /> },
           { path: '/rate-analyses/new', element: <RateAnalysisBuilderPage /> },
+          { path: '/rate-analyses/:id/edit', element: <RateAnalysisBuilderPage /> },
           { path: '/rate-analyses/:id', element: <RateAnalysisDetailPage /> },
           { path: '/projects', element: <ProjectsListPage /> },
           { path: '/projects/:id', element: <ProjectDetailPage /> },

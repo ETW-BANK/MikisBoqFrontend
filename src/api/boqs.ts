@@ -7,6 +7,14 @@ export interface AddBoqItemFromRateAnalysisRequest {
   quantity: number
 }
 
+export interface ManualBoqItemRequest {
+  itemCode: string
+  description: string
+  unitCode: string
+  quantity: number
+  rateAmount: number
+}
+
 export async function addBoqItemFromRateAnalysis(
   projectId: string,
   boqId: string,
@@ -17,4 +25,33 @@ export async function addBoqItemFromRateAnalysis(
     payload
   )
   return data
+}
+
+export async function addManualBoqItem(
+  projectId: string,
+  boqId: string,
+  payload: ManualBoqItemRequest
+): Promise<BoqItemDto> {
+  const { data } = await apiClient.post<BoqItemDto>(
+    `/Projects/${projectId}/boqs/${boqId}/items`,
+    payload
+  )
+  return data
+}
+
+export async function updateBoqItem(
+  projectId: string,
+  boqId: string,
+  itemId: string,
+  payload: ManualBoqItemRequest
+): Promise<BoqItemDto> {
+  const { data } = await apiClient.put<BoqItemDto>(
+    `/Projects/${projectId}/boqs/${boqId}/items/${itemId}`,
+    payload
+  )
+  return data
+}
+
+export async function deleteBoqItem(projectId: string, boqId: string, itemId: string): Promise<void> {
+  await apiClient.delete(`/Projects/${projectId}/boqs/${boqId}/items/${itemId}`)
 }

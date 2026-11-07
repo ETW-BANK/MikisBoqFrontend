@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { downloadFile } from './download'
 
 export interface MoneyDto {
   amount: number
@@ -23,11 +24,6 @@ export interface RateAnalysisDto {
   code: string
   description: string
   unitCode: string
-  project: string
-  location: string
-  client: string
-  consultant: string
-  contractor: string
   remark: string
   totalWorksToBeExecuted: number
   assumedTimeInHours: number
@@ -71,11 +67,6 @@ export interface CreateRateAnalysisRequest {
   assumedTimeHours: number
   overheadPercent: number
   linkedProjectId?: string | null        // NEW
-  project?: string
-  location?: string
-  client?: string
-  consultant?: string
-  contractor?: string
   remark?: string
   components: RateComponentInput[]
 }
@@ -85,14 +76,22 @@ export async function createRateAnalysis(payload: CreateRateAnalysisRequest): Pr
   return data
 }
 
-export async function generateRateAnalysisReport(
+export async function updateRateAnalysis(
   id: string,
-  format: 'pdf' | 'excel'
-): Promise<{ message: string; jobId: string }> {
-  const { data } = await apiClient.post<{ message: string; jobId: string }>(
-    `/RateAnalyses/${id}/generate-report`,
-    null,
-    { params: { format } }
-  )
+  payload: CreateRateAnalysisRequest
+): Promise<RateAnalysisDto> {
+  const { data } = await apiClient.put<RateAnalysisDto>(`/RateAnalyses/${id}`, payload)
   return data
+}
+
+export async function deleteRateAnalysis(id: string): Promise<void> {
+  await apiClient.delete(`/RateAnalyses/${id}`)
+}
+
+export async function generateRateAnalysisReport(id: string, format: 'pdf' | 'excel'): Promise<void> {
+  await downloadFile(
+    `/RateAnalyses/${id}/generate-report`,
+    format,
+    `rate-analysis-${id}.${format === 'excel' ? 'xlsx' : 'pdf'}`
+  )
 }

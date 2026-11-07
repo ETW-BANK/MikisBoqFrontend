@@ -80,7 +80,7 @@ export function ProjectsListPage() {
         </Card>
       )}
 
-      <CreateProjectDialog open={showCreate} onClose={() => setShowCreate(false)} />
+      {showCreate && <CreateProjectDialog open onClose={() => setShowCreate(false)} />}
     </div>
   )
 }

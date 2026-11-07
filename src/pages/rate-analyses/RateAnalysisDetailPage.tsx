@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, FileText, FileSpreadsheet } from 'lucide-react'
-import { useGenerateReport, useRateAnalysis } from '@/hooks/useRateAnalyses'
+import { ArrowLeft, FileText, FileSpreadsheet, Pencil, Trash2 } from 'lucide-react'
+import { useDeleteRateAnalysis, useGenerateReport, useRateAnalysis } from '@/hooks/useRateAnalyses'
+import type { RateAnalysisDto } from '@/api/rateAnalyses'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -12,20 +13,47 @@ export function RateAnalysisDetailPage() {
   const navigate = useNavigate()
   const { data: ra, isLoading, error } = useRateAnalysis(id)
   const generate = useGenerateReport()
-  const [lastGenerated, setLastGenerated] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const deleteRate = useDeleteRateAnalysis()
 
   if (isLoading) return <LoadingSpinner label="Loading rate analysis..." />
   if (error) return <ErrorMessage error={error} />
   if (!ra) return <ErrorMessage error="Rate analysis not found." />
 
   const handleDownload = async (format: 'pdf' | 'excel') => {
-    await generate.mutateAsync({ id: ra.id, format })
-    setLastGenerated(
-      `${format.toUpperCase()} generation queued. Check D:\\MikisReports in a few seconds.`
-    )
+    setMessage(null)
+    try {
+      await generate.mutateAsync({ id: ra.id, format })
+      setMessage({ type: 'success', text: `${format.toUpperCase()} downloaded.` })
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to download the report.' })
+    }
   }
 
-  const hasProjectInfo = ra.project || ra.location || ra.client || ra.consultant || ra.contractor || ra.remark
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete rate analysis "${ra.code}"? It cannot be deleted while used by a BOQ line.`)) return
+    try {
+      await deleteRate.mutateAsync(ra.id)
+      navigate('/rate-analyses')
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to delete rate analysis.' })
+    }
+  }
+  const componentGroups = [
+    { type: 'Material', title: 'Materials (1.01)' },
+    { type: 'Labour', title: 'Labour (1.02)' },
+    { type: 'Equipment', title: 'Equipment (1.03)' },
+    { type: 'Transport', title: 'Transport' },
+  ].map((group) => ({
+    ...group,
+    components: ra.components.filter(
+      (component) => component.componentType.toLowerCase() === group.type.toLowerCase()
+    ),
+  }))
+  const knownTypes = new Set(componentGroups.map((group) => group.type.toLowerCase()))
+  const otherComponents = ra.components.filter(
+    (component) => !knownTypes.has(component.componentType.toLowerCase())
+  )
 
   return (
     <div className="space-y-6">
@@ -48,11 +76,19 @@ export function RateAnalysisDetailPage() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Excel
           </Button>
+          <Button variant="outline" onClick={() => navigate(`/rate-analyses/${ra.id}/edit`)}>
+            <Pencil className="mr-2 h-4 w-4" /> Edit
+          </Button>
+          <Button variant="destructive" onClick={handleDelete} disabled={deleteRate.isPending}>
+            <Trash2 className="mr-2 h-4 w-4" /> Delete
+          </Button>
         </div>
       </div>
 
-      {lastGenerated && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-800">{lastGenerated}</div>
+      {message && (
+        <div className={`rounded-md p-3 text-sm ${message.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+          {message.text}
+        </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -61,51 +97,28 @@ export function RateAnalysisDetailPage() {
         <Stat label="Performance" value={`${ra.performanceRatePerHour.toFixed(2)} ${ra.unitCode}/hr`} />
       </div>
 
-      {hasProjectInfo && (
+      {ra.remark && (
         <Card>
-          <CardHeader><CardTitle>Project Info</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3">
-            {ra.project && <div><span className="text-gray-500">Project:</span> {ra.project}</div>}
-            {ra.location && <div><span className="text-gray-500">Location:</span> {ra.location}</div>}
-            {ra.client && <div><span className="text-gray-500">Client:</span> {ra.client}</div>}
-            {ra.consultant && <div><span className="text-gray-500">Consultant:</span> {ra.consultant}</div>}
-            {ra.contractor && <div><span className="text-gray-500">Contractor:</span> {ra.contractor}</div>}
-            {ra.remark && <div><span className="text-gray-500">Remark:</span> {ra.remark}</div>}
+          <CardHeader><CardTitle>Remark</CardTitle></CardHeader>
+          <CardContent className="text-sm">{ra.remark}
           </CardContent>
         </Card>
       )}
 
       <Card>
         <CardHeader><CardTitle>Components</CardTitle></CardHeader>
-        <CardContent>
-          <table className="w-full text-sm">
-            <thead className="border-b border-gray-200">
-              <tr>
-                <th className="pb-2 text-left text-xs font-medium uppercase text-gray-500">Type</th>
-                <th className="pb-2 text-left text-xs font-medium uppercase text-gray-500">Description</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Qty</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">UF</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Rate</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Additional</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {ra.components.map((c, i) => (
-                <tr key={i}>
-                  <td className="py-2">{c.componentType}</td>
-                  <td className="py-2">{c.description}</td>
-                  <td className="py-2 text-right font-mono">{c.quantity}</td>
-                  <td className="py-2 text-right font-mono">{c.utilizationFactor}</td>
-                  <td className="py-2 text-right font-mono">{c.indexedRate.amount.toFixed(2)}</td>
-                  <td className="py-2 text-right font-mono">
-                    {c.additionalCost ? c.additionalCost.amount.toFixed(2) : '—'}
-                  </td>
-                  <td className="py-2 text-right font-mono">{c.amount.amount.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <CardContent className="space-y-6">
+          {componentGroups.map((group) => group.components.length > 0 && (
+            <ComponentTable
+              key={group.type}
+              title={group.title}
+              type={group.type}
+              components={group.components}
+            />
+          ))}
+          {otherComponents.length > 0 && (
+            <ComponentTable title="Other Components" type="Other" components={otherComponents} />
+          )}
         </CardContent>
       </Card>
 
@@ -122,7 +135,7 @@ export function RateAnalysisDetailPage() {
           <TotalRow
             label="Total Unit Rate"
             value={ra.totalUnitRate.amount}
-            suffix={`ETB/${ra.unitCode}`}
+            suffix={`${ra.totalUnitRate.currencyCode}/${ra.unitCode}`}
             bold
             highlight
           />
@@ -132,6 +145,78 @@ export function RateAnalysisDetailPage() {
       <Link to="/rate-analyses">
         <Button variant="outline">Back to list</Button>
       </Link>
+    </div>
+  )
+}
+
+function ComponentTable({
+  title,
+  type,
+  components,
+}: {
+  title: string
+  type: string
+  components: RateAnalysisDto['components']
+}) {
+  const isMaterial = type === 'Material'
+  const isLabour = type === 'Labour'
+  const rateLabel = isLabour ? 'Indexed Wage/hr' : type === 'Equipment' ? 'Rental/hr' : 'Rate'
+
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b border-gray-200">
+            <tr>
+              <th className="pb-2 text-left text-xs font-medium uppercase text-gray-500">
+                {isMaterial ? 'Material' : isLabour ? 'Labor by Trade' : type === 'Equipment' ? 'Equipment Type' : 'Description'}
+              </th>
+              <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">
+                {isMaterial ? 'Qty' : 'No.'}
+              </th>
+              {!isMaterial && (
+                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">UF</th>
+              )}
+              <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">
+                {isMaterial ? 'Unit Price' : rateLabel}
+              </th>
+              {isMaterial && (
+                <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">Additional Cost</th>
+              )}
+              <th className="pb-2 text-right text-xs font-medium uppercase text-gray-500">
+                {isMaterial ? 'Amount' : type === 'Other' ? 'Amount' : 'Hourly Cost'}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {components.map((component, index) => (
+              <tr key={`${component.componentType}-${component.description}-${index}`}>
+                <td className="py-2">{component.description}</td>
+                <td className="py-2 text-right font-mono">
+                  {component.quantity}{isMaterial && ` ${component.unitCode}`}
+                </td>
+                {!isMaterial && (
+                  <td className="py-2 text-right font-mono">{component.utilizationFactor}</td>
+                )}
+                <td className="py-2 text-right font-mono">
+                  {component.indexedRate.amount.toFixed(2)} {component.indexedRate.currencyCode}/{component.unitCode}
+                </td>
+                {isMaterial && (
+                  <td className="py-2 text-right font-mono">
+                    {component.additionalCost
+                      ? `${component.additionalCost.amount.toFixed(2)} ${component.additionalCost.currencyCode}`
+                      : '—'}
+                  </td>
+                )}
+                <td className="py-2 text-right font-mono">
+                  {component.amount.amount.toFixed(2)} {component.amount.currencyCode}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
