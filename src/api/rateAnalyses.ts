@@ -24,7 +24,7 @@ export interface RateAnalysisDto {
   code: string
   description: string
   unitCode: string
-  remark: string
+  remark: string | null
   totalWorksToBeExecuted: number
   assumedTimeInHours: number
   performanceRatePerHour: number
@@ -47,6 +47,19 @@ function isMoneyDto(value: unknown): value is MoneyDto {
     typeof value.currencyCode === 'string'
 }
 
+function isRateComponentDto(value: unknown): value is RateComponentDto {
+  return isRecord(value) &&
+    typeof value.componentType === 'string' &&
+    typeof value.description === 'string' &&
+    typeof value.unitCode === 'string' &&
+    typeof value.quantity === 'number' &&
+    typeof value.utilizationFactor === 'number' &&
+    isMoneyDto(value.indexedRate) &&
+    isMoneyDto(value.amount) &&
+    (typeof value.materialCode === 'string' || value.materialCode === null) &&
+    (isMoneyDto(value.additionalCost) || value.additionalCost === null)
+}
+
 function isRateAnalysisDto(value: unknown): value is RateAnalysisDto {
   return isRecord(value) &&
     typeof value.id === 'string' &&
@@ -54,8 +67,35 @@ function isRateAnalysisDto(value: unknown): value is RateAnalysisDto {
     typeof value.description === 'string' &&
     typeof value.unitCode === 'string' &&
     (typeof value.linkedProjectId === 'string' || value.linkedProjectId === null) &&
+    (typeof value.remark === 'string' || value.remark === null) &&
+    typeof value.totalWorksToBeExecuted === 'number' &&
+    typeof value.assumedTimeInHours === 'number' &&
+    typeof value.performanceRatePerHour === 'number' &&
     Array.isArray(value.components) &&
+    value.components.every(isRateComponentDto) &&
+    isMoneyDto(value.directMaterialUnitCost) &&
+    isMoneyDto(value.directLabourUnitCost) &&
+    isMoneyDto(value.directEquipmentUnitCost) &&
+    isMoneyDto(value.directUnitCost) &&
+    isMoneyDto(value.overheadAndProfit) &&
     isMoneyDto(value.totalUnitRate)
+}
+
+function extractRateAnalysis(response: unknown): RateAnalysisDto {
+  if (isRecord(response) && 'value' in response) {
+    if (response.isFailure === true || response.isSuccess === false) {
+      const message = typeof response.error === 'string' && response.error.trim()
+        ? response.error
+        : 'The API could not retrieve the rate analysis.'
+      throw new Error(message)
+    }
+    response = response.value
+  }
+
+  if (!isRateAnalysisDto(response)) {
+    throw new Error('The API returned a rate analysis in an unsupported format.')
+  }
+  return response
 }
 
 function extractRateAnalysisList(response: unknown): RateAnalysisDto[] {
@@ -86,8 +126,8 @@ export async function listRateAnalyses(): Promise<RateAnalysisDto[]> {
 }
 
 export async function getRateAnalysis(id: string): Promise<RateAnalysisDto> {
-  const { data } = await apiClient.get<RateAnalysisDto>(`/RateAnalyses/${id}`)
-  return data
+  const { data } = await apiClient.get<unknown>(`/RateAnalyses/${id}`)
+  return extractRateAnalysis(data)
 }
 
 export interface RateComponentInput {
@@ -115,16 +155,16 @@ export interface CreateRateAnalysisRequest {
 }
 
 export async function createRateAnalysis(payload: CreateRateAnalysisRequest): Promise<RateAnalysisDto> {
-  const { data } = await apiClient.post<RateAnalysisDto>('/RateAnalyses', payload)
-  return data
+  const { data } = await apiClient.post<unknown>('/RateAnalyses', payload)
+  return extractRateAnalysis(data)
 }
 
 export async function updateRateAnalysis(
   id: string,
   payload: CreateRateAnalysisRequest
 ): Promise<RateAnalysisDto> {
-  const { data } = await apiClient.put<RateAnalysisDto>(`/RateAnalyses/${id}`, payload)
-  return data
+  const { data } = await apiClient.put<unknown>(`/RateAnalyses/${id}`, payload)
+  return extractRateAnalysis(data)
 }
 
 export async function deleteRateAnalysis(id: string): Promise<void> {
