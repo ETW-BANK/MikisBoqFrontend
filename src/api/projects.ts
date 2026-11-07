@@ -65,13 +65,15 @@ export interface CreateProjectRequest {
   contractor: string
 }
 
+export type UpdateProjectRequest = Omit<CreateProjectRequest, 'ownerId'>
+
 export async function createProject(payload: CreateProjectRequest): Promise<ProjectDto> {
   const { data } = await apiClient.post<ProjectDto>('/Projects', payload)
   return data
 }
 
-export async function updateProject(id: string, payload: CreateProjectRequest): Promise<ProjectDto> {
-  const { data } = await apiClient.put<ProjectDto>(`/Projects/${id}`, payload)
+export async function updateProject(id: string, payload: UpdateProjectRequest): Promise<ProjectDto> {
+  const { data } = await apiClient.put<ProjectDto>(`/Projects/${id}`, { ...payload, id })
   return data
 }
 

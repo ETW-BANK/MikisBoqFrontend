@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { getApiErrorMessage } from '@/lib/apiErrors'
+
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const emptyValues: CreateProjectRequest = {
   code: '',
@@ -58,7 +61,9 @@ export function CreateProjectDialog({
     setError(null)
     if (!values.name.trim()) return setError('Name is required')
     if (!values.clientId.trim()) return setError('Client ID is required')
-    if (!values.ownerId.trim()) return setError('Owner ID is required')
+    if (!GUID_PATTERN.test(values.clientId.trim())) return setError('Client ID must be a valid UUID.')
+    if (!project && !values.ownerId.trim()) return setError('Owner ID is required')
+    if (!project && !GUID_PATTERN.test(values.ownerId.trim())) return setError('Owner ID must be a valid UUID.')
     if (!values.currencyCode.trim()) return setError('Currency is required')
 
     const payload: CreateProjectRequest = {
@@ -75,14 +80,28 @@ export function CreateProjectDialog({
     }
 
     try {
-      if (project) await update.mutateAsync({ id: project.id, payload })
-      else {
+      if (project) {
+        const updatePayload = {
+          code: payload.code,
+          name: payload.name,
+          clientId: payload.clientId,
+          currencyCode: payload.currencyCode,
+          overheadPercent: payload.overheadPercent,
+          profitPercent: payload.profitPercent,
+          contingencyPercent: payload.contingencyPercent,
+          location: payload.location,
+          client: payload.client,
+          consultant: payload.consultant,
+          contractor: payload.contractor,
+        }
+        await update.mutateAsync({ id: project.id, payload: updatePayload })
+      } else {
         await create.mutateAsync(payload)
         setValues({ ...emptyValues })
       }
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to ${project ? 'update' : 'create'} project`)
+      setError(getApiErrorMessage(err, `Failed to ${project ? 'update' : 'create'} project`))
     }
   }
 
@@ -99,14 +118,14 @@ export function CreateProjectDialog({
               <Input value={values.name} onChange={(e) => setField('name', e.target.value)} required />
             </Field>
             <Field label="Client ID *">
-              <Input value={values.clientId} onChange={(e) => setField('clientId', e.target.value)} required />
+              <Input value={values.clientId} onChange={(e) => setField('clientId', e.target.value)} placeholder="UUID from the API" required />
             </Field>
             <Field label="Currency *">
               <Input value={values.currencyCode} onChange={(e) => setField('currencyCode', e.target.value)} placeholder="ETB" required />
             </Field>
-            <Field label="Owner ID *">
-              <Input value={values.ownerId} onChange={(e) => setField('ownerId', e.target.value)} required />
-            </Field>
+            {!project && <Field label="Owner ID *">
+              <Input value={values.ownerId} onChange={(e) => setField('ownerId', e.target.value)} placeholder="UUID from the API" required />
+            </Field>}
             <Field label="Location">
               <Input value={values.location} onChange={(e) => setField('location', e.target.value)} />
             </Field>

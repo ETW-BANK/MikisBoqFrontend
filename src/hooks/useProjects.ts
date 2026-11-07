@@ -10,6 +10,7 @@ import {
   updateBoq,
   updateProject,
   type CreateProjectRequest,
+  type UpdateProjectRequest,
 } from '@/api/projects'
 
 export function useProjects() {
@@ -56,7 +57,7 @@ export function useAddBoq() {
 export function useUpdateProject() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: CreateProjectRequest }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateProjectRequest }) =>
       updateProject(id, payload),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ['projects'] })
