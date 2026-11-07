@@ -37,9 +37,52 @@ export interface RateAnalysisDto {
   components: RateComponentDto[]
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isMoneyDto(value: unknown): value is MoneyDto {
+  return isRecord(value) &&
+    typeof value.amount === 'number' &&
+    typeof value.currencyCode === 'string'
+}
+
+function isRateAnalysisDto(value: unknown): value is RateAnalysisDto {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.code === 'string' &&
+    typeof value.description === 'string' &&
+    typeof value.unitCode === 'string' &&
+    (typeof value.linkedProjectId === 'string' || value.linkedProjectId === null) &&
+    Array.isArray(value.components) &&
+    isMoneyDto(value.totalUnitRate)
+}
+
+function extractRateAnalysisList(response: unknown): RateAnalysisDto[] {
+  let list: unknown[] | undefined
+  if (Array.isArray(response)) list = response
+  if (typeof response === 'object' && response !== null) {
+    const body = response as Record<string, unknown>
+    for (const key of ['items', 'data', 'results', 'value', '$values', 'rateAnalyses']) {
+      if (Array.isArray(body[key])) {
+        list = body[key]
+        break
+      }
+    }
+  }
+
+  if (!list) {
+    throw new Error('The API returned rate analyses in an unsupported format. Expected a list of rate analyses.')
+  }
+  if (!list.every(isRateAnalysisDto)) {
+    throw new Error('The API returned one or more rate analyses with an unsupported format.')
+  }
+  return list
+}
+
 export async function listRateAnalyses(): Promise<RateAnalysisDto[]> {
-  const { data } = await apiClient.get<RateAnalysisDto[]>('/RateAnalyses')
-  return data
+  const { data } = await apiClient.get<unknown>('/RateAnalyses')
+  return extractRateAnalysisList(data)
 }
 
 export async function getRateAnalysis(id: string): Promise<RateAnalysisDto> {
