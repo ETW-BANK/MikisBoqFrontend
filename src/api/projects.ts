@@ -53,19 +53,21 @@ export async function getProject(id: string): Promise<ProjectDto> {
 export interface CreateProjectRequest {
   code?: string
   name: string
-  clientId: string
+  clientId?: string
   currencyCode: string
   overheadPercent: number
   profitPercent: number
   contingencyPercent: number
-  ownerId: string
+  ownerId?: string
   location: string
   client: string
   consultant: string
   contractor: string
 }
 
-export type UpdateProjectRequest = Omit<CreateProjectRequest, 'ownerId'>
+export interface UpdateProjectRequest extends Omit<CreateProjectRequest, 'clientId' | 'ownerId'> {
+  clientId: string
+}
 
 export async function createProject(payload: CreateProjectRequest): Promise<ProjectDto> {
   const { data } = await apiClient.post<ProjectDto>('/Projects', payload)

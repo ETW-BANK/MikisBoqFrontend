@@ -12,12 +12,10 @@ const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const emptyValues: CreateProjectRequest = {
   code: '',
   name: '',
-  clientId: '',
   currencyCode: 'ETB',
   overheadPercent: 10,
   profitPercent: 5,
   contingencyPercent: 2,
-  ownerId: '',
   location: '',
   client: '',
   consultant: '',
@@ -41,7 +39,6 @@ export function CreateProjectDialog({
     overheadPercent: project.overheadPercent,
     profitPercent: project.profitPercent,
     contingencyPercent: project.contingencyPercent,
-    ownerId: project.ownerId,
     location: project.location ?? '',
     client: project.client ?? '',
     consultant: project.consultant ?? '',
@@ -60,19 +57,17 @@ export function CreateProjectDialog({
     e.preventDefault()
     setError(null)
     if (!values.name.trim()) return setError('Name is required')
-    if (!values.clientId.trim()) return setError('Client ID is required')
-    if (!GUID_PATTERN.test(values.clientId.trim())) return setError('Client ID must be a valid UUID.')
-    if (!project && !values.ownerId.trim()) return setError('Owner ID is required')
-    if (!project && !GUID_PATTERN.test(values.ownerId.trim())) return setError('Owner ID must be a valid UUID.')
+    const clientId = values.clientId?.trim()
+    if (project && (!clientId || !GUID_PATTERN.test(clientId))) {
+      return setError('Enter a valid Client ID UUID.')
+    }
     if (!values.currencyCode.trim()) return setError('Currency is required')
 
     const payload: CreateProjectRequest = {
       ...values,
       code: values.code?.trim() || undefined,
       name: values.name.trim(),
-      clientId: values.clientId.trim(),
       currencyCode: values.currencyCode.trim().toUpperCase(),
-      ownerId: values.ownerId.trim(),
       location: values.location.trim(),
       client: values.client.trim(),
       consultant: values.consultant.trim(),
@@ -84,7 +79,7 @@ export function CreateProjectDialog({
         const updatePayload = {
           code: payload.code,
           name: payload.name,
-          clientId: payload.clientId,
+          clientId: clientId ?? project.clientId,
           currencyCode: payload.currencyCode,
           overheadPercent: payload.overheadPercent,
           profitPercent: payload.profitPercent,
@@ -117,15 +112,12 @@ export function CreateProjectDialog({
             <Field label="Name *">
               <Input value={values.name} onChange={(e) => setField('name', e.target.value)} required />
             </Field>
-            <Field label="Client ID *">
-              <Input value={values.clientId} onChange={(e) => setField('clientId', e.target.value)} placeholder="UUID from the API" required />
-            </Field>
+            {project && <Field label="Client ID *">
+              <Input value={values.clientId ?? ''} onChange={(e) => setField('clientId', e.target.value)} required />
+            </Field>}
             <Field label="Currency *">
               <Input value={values.currencyCode} onChange={(e) => setField('currencyCode', e.target.value)} placeholder="ETB" required />
             </Field>
-            {!project && <Field label="Owner ID *">
-              <Input value={values.ownerId} onChange={(e) => setField('ownerId', e.target.value)} placeholder="UUID from the API" required />
-            </Field>}
             <Field label="Location">
               <Input value={values.location} onChange={(e) => setField('location', e.target.value)} />
             </Field>
