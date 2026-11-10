@@ -15,7 +15,6 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { ErrorMessage } from '@/components/shared/ErrorMessage'
 
 type ComponentType = 'Material' | 'Labour' | 'Equipment' | 'Transport'
-const UNIT_OPTIONS = ['EA', 'M3', 'M2', 'LM', 'KG', 'TON', 'HR', 'DAY', 'LS']
 const COMPONENT_TYPES: readonly ComponentType[] = ['Material', 'Labour', 'Equipment', 'Transport']
 
 interface BuilderComponent {
@@ -36,7 +35,7 @@ function newComponent(type: ComponentType): BuilderComponent {
   return {
     id: crypto.randomUUID(),
     type,
-    unitCode: type === 'Material' ? 'M3' : 'HR',
+    unitCode: '',
     currencyCode: 'ETB',
     quantity: 1,
     utilizationFactor: 1,
@@ -72,7 +71,7 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
   // Header fields
   const [code, setCode] = useState(rateAnalysis?.code ?? '')
   const [description, setDescription] = useState(rateAnalysis?.description ?? '')
-  const [unitCode, setUnitCode] = useState(rateAnalysis?.unitCode ?? 'M2')
+  const [unitCode, setUnitCode] = useState(rateAnalysis?.unitCode ?? '')
   const [totalWorks, setTotalWorks] = useState(String(rateAnalysis?.totalWorksToBeExecuted ?? 1))
   const [assumedTime, setAssumedTime] = useState(String(rateAnalysis?.assumedTimeInHours ?? 8))
   const [overheadPercent, setOverheadPercent] = useState(String(
@@ -169,6 +168,7 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
 
     if (!code.trim()) return setError('Code is required')
     if (!description.trim()) return setError('Description is required')
+    if (!unitCode.trim()) return setError('Unit is required')
     if (!Number.isFinite(totalWorksNum) || totalWorksNum <= 0) return setError('Total works must be > 0')
     if (!Number.isFinite(assumedTimeNum) || assumedTimeNum <= 0) return setError('Assumed time must be > 0')
     if (!Number.isFinite(overheadNum) || overheadNum < 0) return setError('Overhead percentage must be zero or greater.')
@@ -269,15 +269,11 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
           </div>
           <div>
             <Label>Unit *</Label>
-            <select
+            <Input
               value={unitCode}
               onChange={(e) => setUnitCode(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
-            >
-              {UNIT_OPTIONS.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
+              required
+            />
           </div>
           <div>
             <Label>Total Works *</Label>

@@ -2,11 +2,18 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## API configuration
+## Local BOQ workflow
 
-Production builds use `https://mikisapi.runasp.net/api` by default. Local development continues to use the Vite `/api` proxy configured in `vite.config.ts`. Set `VITE_API_BASE_URL` to override the API base URL when needed.
+The frontend connects to the unauthenticated local API at `https://localhost:7292/api`. Start the ASP.NET API first, then run:
 
-GitHub Pages serves the built frontend from the root of the `gh-pages` branch at `https://etw-bank.github.io/MikisBoqFrontend/`. To publish an update, run `npm run build`, then publish the contents of `dist` to the root of `gh-pages` and push that branch. The API remains hosted separately.
+```sh
+npm install
+npm run dev
+```
+
+Vite proxies `/api` requests to `https://localhost:7292`, so browser API calls use the backend's local HTTPS endpoint without requiring CORS configuration. The development proxy accepts the local ASP.NET development certificate. Set `VITE_API_BASE_URL` to override the API base URL.
+
+The current workflow is intended for local development. A production build defaults to `https://localhost:7292/api`, which is only reachable by a browser on the same machine as the API; GitHub Pages is not a usable deployment target with this local backend URL.
 
 Currently, two official plugins are available:
 

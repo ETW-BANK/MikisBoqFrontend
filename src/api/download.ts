@@ -15,6 +15,21 @@ function getFilename(contentDisposition: string | undefined, fallback: string): 
   return plain || fallback
 }
 
+function saveBlob(blob: Blob, contentDisposition: string | undefined, fallbackFilename: string) {
+  const filename = getFilename(contentDisposition, fallbackFilename)
+  const url = URL.createObjectURL(blob)
+  try {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+}
+
 async function getErrorMessage(errorData: Blob): Promise<string> {
   const text = await errorData.text()
   try {
@@ -29,6 +44,23 @@ async function getErrorMessage(errorData: Blob): Promise<string> {
     return text || 'The server could not generate the requested file.'
   }
   return text || 'The server could not generate the requested file.'
+}
+
+export async function downloadGetFile(path: string, fallbackFilename: string): Promise<void> {
+  let response
+  try {
+    response = await apiClient.get<Blob>(path, { responseType: 'blob' })
+  } catch (error) {
+    if (axios.isAxiosError<Blob>(error) && error.response?.data instanceof Blob) {
+      throw new Error(await getErrorMessage(error.response.data), { cause: error })
+    }
+    throw error
+  }
+  const contentType = response.headers['content-type'] as string | undefined
+  if (contentType?.includes('json') || contentType?.includes('text/')) {
+    throw new Error(await getErrorMessage(response.data))
+  }
+  saveBlob(response.data, response.headers['content-disposition'] as string | undefined, fallbackFilename)
 }
 
 export async function downloadFile(
@@ -53,16 +85,5 @@ export async function downloadFile(
     throw new Error(await getErrorMessage(response.data))
   }
 
-  const filename = getFilename(response.headers['content-disposition'] as string | undefined, fallbackFilename)
-  const url = URL.createObjectURL(response.data)
-  try {
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(url), 0)
-  }
+  saveBlob(response.data, response.headers['content-disposition'] as string | undefined, fallbackFilename)
 }

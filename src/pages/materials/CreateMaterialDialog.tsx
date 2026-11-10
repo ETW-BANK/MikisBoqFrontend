@@ -5,18 +5,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 
-const UNIT_OPTIONS = [
-    { code: 'EA', label: 'Each' },
-    { code: 'M3', label: 'Cubic Meter' },
-    { code: 'M2', label: 'Square Meter' },
-    { code: 'LM', label: 'Linear Meter' },
-    { code: 'KG', label: 'Kilogram' },
-    { code: 'TON', label: 'Tonne' },
-    { code: 'HR', label: 'Hour' },
-    { code: 'DAY', label: 'Day' },
-    { code: 'LS', label: 'Lump Sum' },
-]
-
 export function CreateMaterialDialog({
     open,
     onClose,
@@ -26,7 +14,7 @@ export function CreateMaterialDialog({
 }) {
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
-    const [unitCode, setUnitCode] = useState('M3')
+    const [unitCode, setUnitCode] = useState('')
     const [rateAmount, setRateAmount] = useState('0')
     const [currencyCode, setCurrencyCode] = useState('ETB')
     const [code, setCode] = useState('')
@@ -37,7 +25,7 @@ export function CreateMaterialDialog({
     const reset = () => {
         setName('')
         setDescription('')
-        setUnitCode('M3')
+        setUnitCode('')
         setRateAmount('0')
         setCurrencyCode('ETB')
         setCode('')
@@ -112,18 +100,12 @@ export function CreateMaterialDialog({
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label htmlFor="mat-unit">Unit *</Label>
-                            <select
+                            <Input
                                 id="mat-unit"
                                 value={unitCode}
                                 onChange={(e) => setUnitCode(e.target.value)}
-                                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                            >
-                                {UNIT_OPTIONS.map((u) => (
-                                    <option key={u.code} value={u.code}>
-                                        {u.code} — {u.label}
-                                    </option>
-                                ))}
-                            </select>
+                                required
+                            />
                         </div>
 
                         <div>

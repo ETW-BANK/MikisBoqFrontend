@@ -305,7 +305,7 @@ function BoqItemDialog({
     const payload: ManualBoqItemRequest = {
       itemCode: itemCode.trim(),
       description: description.trim(),
-      unitCode: unitCode.trim().toUpperCase(),
+      unitCode,
       quantity: qty,
       rateAmount: rate,
     }
@@ -325,7 +325,7 @@ function BoqItemDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><Label>Item Code *</Label><Input value={itemCode} onChange={(e) => setItemCode(e.target.value)} required /></div>
           <div><Label>Description *</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} required /></div>
-          <div><Label>Unit Code *</Label><Input value={unitCode} onChange={(e) => setUnitCode(e.target.value)} placeholder="M3" required /></div>
+          <div><Label>Unit Code *</Label><Input value={unitCode} onChange={(e) => setUnitCode(e.target.value)} placeholder="e.g., m³" required /></div>
           <div><Label>Quantity *</Label><Input type="number" min="0.000001" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} required /></div>
           <div><Label>Rate ({currencyCode}) *</Label><Input type="number" min="0" step="any" value={rateAmount} onChange={(e) => setRateAmount(e.target.value)} required /></div>
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</div>}
