@@ -11,12 +11,13 @@ export function RateAnalysesListPage() {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const pageSize = 20
-  const { data, isLoading, error } = useRateAnalyses(page, pageSize)
   
-  // 1. Get the raw items from the API
+  // Fetch ALL items (we pass 5000 to the hook)
+  const { data, isLoading, error } = useRateAnalyses(1, 5000) 
+  
   const allRates = data?.items ?? []
-  
-  // 2. Filter them locally based on the search input
+
+  // 1. Filter based on search
   const filteredRates = useMemo(() => {
     if (!searchQuery.trim()) return allRates
     const lowerSearch = searchQuery.toLowerCase()
@@ -27,15 +28,14 @@ export function RateAnalysesListPage() {
     )
   }, [allRates, searchQuery])
 
-  // 3. If searching, hide pagination (show all results). Otherwise, paginate.
+  // 2. Handle Pagination
   const isSearching = searchQuery.trim().length > 0
-  const displayedRates = isSearching ? filteredRates : allRates
-  const currentPage = data?.page ?? page
-  const totalPages = data?.totalPages ?? 0
+  const totalPages = Math.ceil(filteredRates.length / pageSize)
+  const startIndex = (page - 1) * pageSize
+  const displayedRates = filteredRates.slice(startIndex, startIndex + pageSize)
 
   return (
     <div className="space-y-6">
-      {/* HEADER & SEARCH */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Rate Analyses</h1>
@@ -45,7 +45,6 @@ export function RateAnalysesListPage() {
         </div>
         
         <div className="flex items-center gap-3">
-          {/* SEARCH BAR */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
@@ -55,7 +54,7 @@ export function RateAnalysesListPage() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
-                setPage(1) // Reset to page 1 when searching
+                setPage(1) // Reset to page 1 on new search
               }}
             />
           </div>
@@ -79,14 +78,6 @@ export function RateAnalysesListPage() {
               <p className="text-gray-500">
                 {isSearching ? `No rate analyses found matching "${searchQuery}"` : 'No Rate Analyses yet.'}
               </p>
-              {!isSearching && (
-                <Link to="/rate-analyses/new">
-                  <Button className="mt-4">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create your first Rate Analysis
-                  </Button>
-                </Link>
-              )}
             </div>
           ) : (
             <div className="overflow-hidden">
@@ -111,35 +102,32 @@ export function RateAnalysesListPage() {
                 </tbody>
               </table>
               
-              {/* PAGINATION (Only show if not searching) */}
-              {!isSearching && (
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-6 py-3">
-                  <p className="text-xs text-gray-500">
-                    Showing {(currentPage - 1) * (data?.size ?? pageSize) + 1}–{Math.min(currentPage * (data?.size ?? pageSize), data?.totalCount ?? 0)} of {data?.totalCount ?? 0} rate analyses
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(currentPage - 1)}
-                      disabled={currentPage <= 1 || isLoading}
-                    >
-                      <ChevronLeft className="mr-1 h-4 w-4" /> Previous
-                    </Button>
-                    <span className="min-w-20 text-center text-sm text-gray-600">
-                      Page {currentPage} of {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(currentPage + 1)}
-                      disabled={currentPage >= totalPages || isLoading}
-                    >
-                      Next <ChevronRight className="ml-1 h-4 w-4" />
-                    </Button>
-                  </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-6 py-3">
+                <p className="text-xs text-gray-500">
+                  Showing {startIndex + 1}–{Math.min(startIndex + pageSize, filteredRates.length)} of {filteredRates.length} rate analyses
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(page - 1)}
+                    disabled={page <= 1 || isLoading}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+                  </Button>
+                  <span className="min-w-20 text-center text-sm text-gray-600">
+                    Page {page} of {totalPages || 1}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(page + 1)}
+                    disabled={page >= totalPages || isLoading}
+                  >
+                    Next <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
                 </div>
-              )}
+              </div>
             </div>
           )}
         </Card>
