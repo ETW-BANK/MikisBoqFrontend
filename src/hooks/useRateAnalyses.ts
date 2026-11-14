@@ -3,8 +3,6 @@ import {
   createRateAnalysis,
   getRateAnalysis,
   listRateAnalyses,
-  generateRateAnalysisReport,
-  deleteRateAnalysis,
   type CreateRateAnalysisRequest,
   updateRateAnalysis,
 } from '@/api/rateAnalyses'
@@ -43,20 +41,5 @@ export function useUpdateRateAnalysis() {
       qc.invalidateQueries({ queryKey: ['rate-analyses'] })
       qc.invalidateQueries({ queryKey: ['rate-analyses', id] })
     },
-  })
-}
-
-export function useDeleteRateAnalysis() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => deleteRateAnalysis(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['rate-analyses'] }),
-  })
-}
-
-export function useGenerateReport() {
-  return useMutation({
-    mutationFn: ({ id, format }: { id: string; format: 'pdf' | 'excel' }) =>
-      generateRateAnalysisReport(id, format),
   })
 }
