@@ -89,22 +89,19 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
   const [components, setComponents] = useState(item.components)
   const [customComponentModes, setCustomComponentModes] = useState<Map<number, boolean>>(() => new Map())
   const [saveError, setSaveError] = useState<unknown>(null)
-  const materialsQuery = useQuery({
-    queryKey: ['masterData', 'materials'],
-    queryFn: listMasterDataMaterials,
-  })
-  const laborsQuery = useQuery({
-    queryKey: ['masterData', 'labors'],
-    queryFn: listMasterDataLabors,
-  })
-  const equipmentsQuery = useQuery({
-    queryKey: ['masterData', 'equipments'],
-    queryFn: listMasterDataEquipments,
-  })
+
+  // --- QUERIES ---
+  const materialsQuery = useQuery({ queryKey: ['masterData', 'materials'], queryFn: listMasterDataMaterials })
+  const laborsQuery = useQuery({ queryKey: ['masterData', 'labors'], queryFn: listMasterDataLabors })
+  const equipmentsQuery = useQuery({ queryKey: ['masterData', 'equipments'], queryFn: listMasterDataEquipments })
+
+  // --- CALCULATIONS ---
+  // 1. Define performanceRate here so the JSX can see it
+  const performanceRate = assumedTimeHours > 0 ? totalWorks / assumedTimeHours : 0
 
   const calculatedRate = useMemo(() => {
     if (totalWorks <= 0 || assumedTimeHours <= 0) return null
-    const performanceRate = totalWorks / assumedTimeHours
+    
     const materialCost = components
       .filter((component) => component.componentType === 'Material')
       .reduce((sum, component) => sum + (component.indexedRate + component.additionalCost) * component.quantity, 0)
@@ -114,8 +111,10 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
     const equipmentCost = components
       .filter((component) => component.componentType === 'Equipment')
       .reduce((sum, component) => sum + component.indexedRate * component.quantity * component.utilizationFactor * component.overtimeFactor, 0)
+      
     return materialCost + labourCost / performanceRate + equipmentCost / performanceRate
-  }, [assumedTimeHours, components, totalWorks])
+  }, [assumedTimeHours, components, totalWorks, performanceRate])
+
   const showLabourFactors = components.some((component) => component.componentType !== 'Material')
 
   const updateItem = useMutation({
@@ -180,29 +179,36 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
 
   return (
     <form onSubmit={save} className="space-y-6">
-      {saveError !== null ? <ErrorMessage error={saveError} /> : null}
-      {materialsQuery.error && <ErrorMessage error={materialsQuery.error} />}
-      {laborsQuery.error && <ErrorMessage error={laborsQuery.error} />}
-      {equipmentsQuery.error && <ErrorMessage error={equipmentsQuery.error} />}
-      <div>
-        <h1 className="text-2xl font-bold">Edit BOQ item {item.itemCode}</h1>
-        <p className="mt-1 text-sm text-gray-500">{item.description} · {item.unitCode}</p>
-      </div>
+      {/* ... errors and title ... */}
 
       <Card className="p-6">
         <h2 className="mb-4 text-lg font-semibold">Work quantities</h2>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-4"> 
+          
           <label className="text-sm font-medium">BOQ quantity ({item.unitCode})
             <input className={fieldClass} type="number" min="0.000001" step="any" value={numberInputValue(quantity)} onChange={(event) => setQuantity(Number(event.target.value))} />
           </label>
+          
           <label className="text-sm font-medium">Total works
             <input className={fieldClass} type="number" min="0.000001" step="any" value={numberInputValue(totalWorks)} onChange={(event) => setTotalWorks(Number(event.target.value))} />
           </label>
+          
           <label className="text-sm font-medium">Assumed time (hours)
             <input className={fieldClass} type="number" min="0.000001" step="any" value={numberInputValue(assumedTimeHours)} onChange={(event) => setAssumedTimeHours(Number(event.target.value))} />
           </label>
+
+          <label className="text-sm font-medium">Performance Rate ({item.unitCode}/hr)
+            <input 
+              className={`${fieldClass} bg-gray-100 text-gray-700 cursor-not-allowed`} 
+              value={performanceRate.toFixed(2)} 
+              readOnly 
+              tabIndex={-1}
+            />
+          </label>
+          
         </div>
       </Card>
+
 
       <Card className="w-full overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b p-5">
