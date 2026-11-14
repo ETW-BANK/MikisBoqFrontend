@@ -9,10 +9,10 @@ import {
   updateRateAnalysis,
 } from '@/api/rateAnalyses'
 
-export function useRateAnalyses() {
+export function useRateAnalyses(page = 1, size = 20) {
   return useQuery({
-    queryKey: ['rate-analyses'],
-    queryFn: listRateAnalyses,
+    queryKey: ['rate-analyses', page, size],
+    queryFn: () => listRateAnalyses(page, size),
   })
 }
 

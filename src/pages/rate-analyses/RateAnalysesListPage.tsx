@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { useRateAnalyses } from '@/hooks/useRateAnalyses'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -7,7 +8,12 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { ErrorMessage } from '@/components/shared/ErrorMessage'
 
 export function RateAnalysesListPage() {
-  const { data: rates = [], isLoading, error } = useRateAnalyses()
+  const [page, setPage] = useState(1)
+  const pageSize = 20
+  const { data, isLoading, error } = useRateAnalyses(page, pageSize)
+  const rates = data?.items ?? []
+  const currentPage = data?.page ?? page
+  const totalPages = data?.totalPages ?? 0
 
   return (
     <div className="space-y-6">
@@ -49,32 +55,45 @@ export function RateAnalysesListPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Code</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Description</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Unit</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500">Rate</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500">Components</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {rates.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 font-mono text-sm">
-                        <Link to={`/rate-analyses/${r.id}`} className="text-brand hover:underline">
-                          {r.code}
-                        </Link>
+                        <Link to={`/rate-analyses/${r.id}`} className="text-brand hover:underline">{r.code}</Link>
                       </td>
                       <td className="px-6 py-4">{r.description}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{r.unitCode}</td>
-                      <td className="px-6 py-4 text-right font-mono text-sm">
-                        {r.totalUnitRate.amount.toFixed(2)} {r.totalUnitRate.currencyCode}
-                      </td>
-                      <td className="px-6 py-4 text-right text-sm text-gray-600">
-                        {r.components.length}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="border-t border-gray-200 px-6 py-3 text-xs text-gray-500">
-                {rates.length} rate analyses
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-6 py-3">
+                <p className="text-xs text-gray-500">
+                  Showing {(currentPage - 1) * (data?.size ?? pageSize) + 1}–{Math.min(currentPage * (data?.size ?? pageSize), data?.totalCount ?? 0)} of {data?.totalCount ?? 0} rate analyses
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(currentPage - 1)}
+                    disabled={currentPage <= 1 || isLoading}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+                  </Button>
+                  <span className="min-w-20 text-center text-sm text-gray-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(currentPage + 1)}
+                    disabled={currentPage >= totalPages || isLoading}
+                  >
+                    Next <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}

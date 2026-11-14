@@ -1,18 +1,27 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
-import { useMaterials } from '@/hooks/useMaterials'
-import { useCreateRateAnalysis, useRateAnalysis, useUpdateRateAnalysis } from '@/hooks/useRateAnalyses'
-import { useProjects } from '@/hooks/useProjects'
+import { useRateAnalysis, useUpdateRateAnalysis } from '@/hooks/useRateAnalyses'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { RateAnalysisDto, RateComponentInput } from '@/api/rateAnalyses'
-import type { Material } from '@/api/materials'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { ErrorMessage } from '@/components/shared/ErrorMessage'
+import {
+  listMasterDataEquipments,
+  listMasterDataLabors,
+  listMasterDataMaterials,
+} from '@/api/masterData'
+import { listBoqProjects } from '@/api/projects'
+import type {
+  MasterDataEquipment,
+  MasterDataLabor,
+  MasterDataMaterial,
+} from '@/api/masterData'
 
 type ComponentType = 'Material' | 'Labour' | 'Equipment' | 'Transport'
 const COMPONENT_TYPES: readonly ComponentType[] = ['Material', 'Labour', 'Equipment', 'Transport']
@@ -21,6 +30,7 @@ interface BuilderComponent {
   id: string
   type: ComponentType
   materialCode?: string
+  masterDataId?: string
   description?: string
   unitCode: string
   currencyCode: string
@@ -62,11 +72,24 @@ function isComponentType(value: string): value is ComponentType {
 
 function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: RateAnalysisDto }) {
   const navigate = useNavigate()
-  const { data: materials = [] } = useMaterials()
-  const { data: projects = [] } = useProjects()
-  const create = useCreateRateAnalysis()
+  const masterMaterialsQuery = useQuery({
+    queryKey: ['masterData', 'materials'],
+    queryFn: listMasterDataMaterials,
+  })
+  const masterLaborsQuery = useQuery({
+    queryKey: ['masterData', 'labors'],
+    queryFn: listMasterDataLabors,
+  })
+  const masterEquipmentsQuery = useQuery({
+    queryKey: ['masterData', 'equipments'],
+    queryFn: listMasterDataEquipments,
+  })
+  const materials = masterMaterialsQuery.data ?? []
+  const labors = masterLaborsQuery.data ?? []
+  const equipments = masterEquipmentsQuery.data ?? []
+  const projectsQuery = useQuery({ queryKey: ['boqProjects'], queryFn: listBoqProjects })
+  const projects = projectsQuery.data ?? []
   const update = useUpdateRateAnalysis()
-  const mutation = id ? update : create
 
   // Header fields
   const [code, setCode] = useState(rateAnalysis?.code ?? '')
@@ -146,16 +169,56 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
     setComponents(components.filter((c) => c.id !== id))
   }
 
-  const handleMaterialSelect = (id: string, matCode: string) => {
-    const mat = materials.find((m) => m.code === matCode)
-    if (!mat) return
+  const handleMaterialSelect = (id: string, materialId: string) => {
+    const mat = materials.find((m) => m.id === materialId)
+    if (!mat) {
+      updateComponent(id, {
+        materialCode: undefined,
+        masterDataId: undefined,
+        description: '',
+        unitCode: '',
+        indexedRate: 0,
+        additionalCost: 0,
+        overrideRate: '',
+      })
+      return
+    }
     updateComponent(id, {
-      materialCode: matCode,
+      materialCode: mat.id,
+      masterDataId: mat.id,
       description: mat.name,
       unitCode: mat.unitCode,
-      currencyCode: mat.currentRate.currencyCode,
-      indexedRate: mat.currentRate.amount,
+      indexedRate: mat.defaultUnitPrice,
+      additionalCost: mat.defaultAdditionalCost,
       overrideRate: '',
+    })
+  }
+
+  const handleLaborSelect = (componentId: string, laborId: string) => {
+    const labor = labors.find((item) => item.id === laborId)
+    if (!labor) {
+      updateComponent(componentId, { masterDataId: undefined, description: '', unitCode: '', indexedRate: 0 })
+      return
+    }
+    updateComponent(componentId, {
+      masterDataId: labor.id,
+      description: labor.trade,
+      unitCode: 'HR',
+      indexedRate: labor.indexedWage,
+    })
+  }
+
+  const handleEquipmentSelect = (componentId: string, equipmentId: string) => {
+    const equipment = equipments.find((item) => item.id === equipmentId)
+    if (!equipment) {
+      updateComponent(componentId, { masterDataId: undefined, description: '', unitCode: '', indexedRate: 0 })
+      return
+    }
+    updateComponent(componentId, {
+      masterDataId: equipment.id,
+      description: equipment.name,
+      unitCode: 'HR',
+      indexedRate: equipment.totalCostPerHr,
     })
   }
 
@@ -221,9 +284,12 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
           }
         }),
       }
-      if (id) await update.mutateAsync({ id, payload })
-      else await create.mutateAsync(payload)
-      navigate(id ? `/rate-analyses/${id}` : '/rate-analyses')
+      if (!id) {
+        setError('The live API does not provide an endpoint to create rate analyses yet.')
+        return
+      }
+      await update.mutateAsync({ id, payload })
+      navigate(`/rate-analyses/${id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     }
@@ -247,8 +313,8 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
           <Button variant="outline" onClick={() => navigate(id ? `/rate-analyses/${id}` : '/rate-analyses')}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={mutation.isPending}>
-            {mutation.isPending ? 'Saving...' : id ? 'Save Changes' : 'Save Rate Analysis'}
+          <Button onClick={handleSave} disabled={update.isPending || !id}>
+            {update.isPending ? 'Saving...' : id ? 'Save Changes' : 'Create is unavailable in the live API'}
           </Button>
         </div>
       </div>
@@ -329,7 +395,7 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
             >
               <option value="">-- No project (standalone RA) --</option>
               {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
@@ -346,34 +412,41 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
         type="Material"
         components={grouped('Material')}
         materials={materials}
+        isLoadingMasterData={masterMaterialsQuery.isLoading}
         subtotal={materialTotal}
         currencyCode={currencyCode}
         onAdd={() => addComponent('Material')}
         onUpdate={updateComponent}
         onRemove={removeComponent}
-        onMaterialSelect={handleMaterialSelect}
+        onMasterDataSelect={handleMaterialSelect}
       />
 
       <ComponentSection
         title="Labour (1.02)"
         type="Labour"
         components={grouped('Labour')}
+        labors={labors}
+        isLoadingMasterData={masterLaborsQuery.isLoading}
         subtotal={labourTotal}
         currencyCode={currencyCode}
         onAdd={() => addComponent('Labour')}
         onUpdate={updateComponent}
         onRemove={removeComponent}
+        onMasterDataSelect={handleLaborSelect}
       />
 
       <ComponentSection
         title="Equipment (1.03)"
         type="Equipment"
         components={grouped('Equipment')}
+        equipments={equipments}
+        isLoadingMasterData={masterEquipmentsQuery.isLoading}
         subtotal={equipmentTotal}
         currencyCode={currencyCode}
         onAdd={() => addComponent('Equipment')}
         onUpdate={updateComponent}
         onRemove={removeComponent}
+        onMasterDataSelect={handleEquipmentSelect}
       />
       <ComponentSection
         title="Transport"
@@ -406,6 +479,10 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
       {error && (
         <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</div>
       )}
+      {masterMaterialsQuery.error && <ErrorMessage error={masterMaterialsQuery.error} />}
+      {masterLaborsQuery.error && <ErrorMessage error={masterLaborsQuery.error} />}
+      {masterEquipmentsQuery.error && <ErrorMessage error={masterEquipmentsQuery.error} />}
+      {projectsQuery.error && <ErrorMessage error={projectsQuery.error} />}
     </div>
   )
 }
@@ -413,21 +490,25 @@ function RateAnalysisForm({ id, rateAnalysis }: { id?: string; rateAnalysis?: Ra
 // ---------- Sub-components ----------
 
 function ComponentSection({
-  title, type, components, materials, subtotal, currencyCode, onAdd, onUpdate, onRemove, onMaterialSelect,
+  title, type, components, materials, labors, equipments, isLoadingMasterData, subtotal, currencyCode, onAdd, onUpdate, onRemove, onMasterDataSelect,
 }: {
   title: string
   type: ComponentType
   components: BuilderComponent[]
-  materials?: Material[]
+  materials?: MasterDataMaterial[]
+  labors?: MasterDataLabor[]
+  equipments?: MasterDataEquipment[]
+  isLoadingMasterData?: boolean
   subtotal: number
   currencyCode: string
   onAdd: () => void
   onUpdate: (id: string, patch: Partial<BuilderComponent>) => void
   onRemove: (id: string) => void
-  onMaterialSelect?: (id: string, code: string) => void
+  onMasterDataSelect?: (id: string, masterDataId: string) => void
 }) {
   const isMaterial = type === 'Material'
   const isLabour = type === 'Labour'
+  const isEquipment = type === 'Equipment'
   const descriptionLabel = isMaterial
     ? 'Material'
     : isLabour
@@ -452,6 +533,7 @@ function ComponentSection({
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-xs text-gray-500">{helperText}</p>
+        {isLoadingMasterData && <p className="mb-2 text-xs text-gray-500">Loading master data…</p>}
         {components.length === 0 ? (
           <p className="py-4 text-center text-sm text-gray-400">
             No {type.toLowerCase()} components. Click "Add {type}" above.
@@ -487,16 +569,47 @@ function ComponentSection({
                 key={c.id}
                 className="grid grid-cols-12 gap-2 rounded-md border border-gray-200 bg-gray-50 p-2"
               >
-                {isMaterial && materials ? (
+                {isMaterial ? (
                   <select
-                    value={c.materialCode ?? ''}
-                    onChange={(e) => onMaterialSelect?.(c.id, e.target.value)}
+                    value={c.masterDataId ?? materials?.find((material) =>
+                      material.id === c.materialCode || material.name === c.description
+                    )?.id ?? ''}
+                    onChange={(e) => onMasterDataSelect?.(c.id, e.target.value)}
                     className="col-span-4 flex h-9 rounded-md border border-gray-300 bg-white px-2 text-sm"
+                    aria-label="Select material"
                   >
                     <option value="">-- Select material --</option>
-                    {materials.map((m) => (
-                      <option key={m.code} value={m.code}>
-                        {m.code} — {m.name} ({m.currentRate.amount.toFixed(2)} {m.currentRate.currencyCode}/{m.unitCode})
+                    {(materials ?? []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.unitCode}) — {m.defaultUnitPrice.toFixed(2)} ETB
+                      </option>
+                    ))}
+                  </select>
+                ) : isLabour ? (
+                  <select
+                    value={c.masterDataId ?? labors?.find((labor) => labor.trade === c.description)?.id ?? ''}
+                    onChange={(e) => onMasterDataSelect?.(c.id, e.target.value)}
+                    className="col-span-4 flex h-9 rounded-md border border-gray-300 bg-white px-2 text-sm"
+                    aria-label="Select labor trade"
+                  >
+                    <option value="">-- Select trade --</option>
+                    {(labors ?? []).map((labor) => (
+                      <option key={labor.id} value={labor.id}>
+                        {labor.trade} — {labor.indexedWage.toFixed(2)} ETB/hr
+                      </option>
+                    ))}
+                  </select>
+                ) : isEquipment ? (
+                  <select
+                    value={c.masterDataId ?? equipments?.find((equipment) => equipment.name === c.description)?.id ?? ''}
+                    onChange={(e) => onMasterDataSelect?.(c.id, e.target.value)}
+                    className="col-span-4 flex h-9 rounded-md border border-gray-300 bg-white px-2 text-sm"
+                    aria-label="Select equipment"
+                  >
+                    <option value="">-- Select equipment --</option>
+                    {(equipments ?? []).map((equipment) => (
+                      <option key={equipment.id} value={equipment.id}>
+                        {equipment.name} — {equipment.totalCostPerHr.toFixed(2)} ETB/hr
                       </option>
                     ))}
                   </select>
@@ -528,8 +641,7 @@ function ComponentSection({
                     <Input
                       type="number" min="0" step="any"
                       aria-label="Optional material rate override"
-                      placeholder={c.indexedRate.toFixed(2)}
-                      value={c.overrideRate ?? ''}
+                      value={c.overrideRate ?? String(c.indexedRate)}
                       onChange={(e) => onUpdate(c.id, { overrideRate: e.target.value })}
                       className="col-span-2 h-9"
                     />

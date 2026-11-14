@@ -9,6 +9,16 @@ import { ErrorMessage } from '@/components/shared/ErrorMessage'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { getBoqItem, listBoqProjects, updateBoqItem } from '@/api/projects'
 import type { BoqItemComponent, BoqItemDetail } from '@/api/projects'
+import {
+  listMasterDataEquipments,
+  listMasterDataLabors,
+  listMasterDataMaterials,
+} from '@/api/masterData'
+import type {
+  MasterDataEquipment,
+  MasterDataLabor,
+  MasterDataMaterial,
+} from '@/api/masterData'
 import { formatMoney, numberInputValue } from './boqFormat'
 
 const fieldClass = 'mt-1 h-10 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand'
@@ -77,7 +87,20 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
   const [totalWorks, setTotalWorks] = useState(item.totalWorks)
   const [assumedTimeHours, setAssumedTimeHours] = useState(item.assumedTimeHours)
   const [components, setComponents] = useState(item.components)
+  const [customComponentModes, setCustomComponentModes] = useState<Map<number, boolean>>(() => new Map())
   const [saveError, setSaveError] = useState<unknown>(null)
+  const materialsQuery = useQuery({
+    queryKey: ['masterData', 'materials'],
+    queryFn: listMasterDataMaterials,
+  })
+  const laborsQuery = useQuery({
+    queryKey: ['masterData', 'labors'],
+    queryFn: listMasterDataLabors,
+  })
+  const equipmentsQuery = useQuery({
+    queryKey: ['masterData', 'equipments'],
+    queryFn: listMasterDataEquipments,
+  })
 
   const calculatedRate = useMemo(() => {
     if (totalWorks <= 0 || assumedTimeHours <= 0) return null
@@ -114,6 +137,29 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
     ))
   }
 
+  function setComponentCustom(index: number, isCustom: boolean) {
+    setCustomComponentModes((current) => {
+      const next = new Map(current)
+      next.set(index, isCustom)
+      return next
+    })
+  }
+
+  function resetComponentCustom(index: number) {
+    setCustomComponentModes((current) => {
+      const next = new Map(current)
+      next.delete(index)
+      return next
+    })
+  }
+
+  function removeComponent(index: number) {
+    setComponents((current) => current.filter((_, componentIndex) => componentIndex !== index))
+    setCustomComponentModes((current) => new Map([...current]
+      .filter(([componentIndex]) => componentIndex !== index)
+      .map(([componentIndex, isCustom]) => [componentIndex > index ? componentIndex - 1 : componentIndex, isCustom])))
+  }
+
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaveError(null)
@@ -135,6 +181,9 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
   return (
     <form onSubmit={save} className="space-y-6">
       {saveError !== null ? <ErrorMessage error={saveError} /> : null}
+      {materialsQuery.error && <ErrorMessage error={materialsQuery.error} />}
+      {laborsQuery.error && <ErrorMessage error={laborsQuery.error} />}
+      {equipmentsQuery.error && <ErrorMessage error={equipmentsQuery.error} />}
       <div>
         <h1 className="text-2xl font-bold">Edit BOQ item {item.itemCode}</h1>
         <p className="mt-1 text-sm text-gray-500">{item.description} · {item.unitCode}</p>
@@ -168,7 +217,7 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
         <table className="w-full table-fixed">
           <colgroup>
             <col className="w-[13%]" />
-            <col className="w-[25%]" />
+            <col className="w-[29%]" />
             <col className="w-[11%]" />
             <col className="w-[8%]" />
             {showLabourFactors && (
@@ -177,8 +226,8 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
                 <col className="w-[8%]" />
               </>
             )}
-            <col className={showLabourFactors ? 'w-[10%]' : 'w-[17%]'} />
-            <col className={showLabourFactors ? 'w-[12%]' : 'w-[21%]'} />
+            <col className={showLabourFactors ? 'w-[9%]' : 'w-[15%]'} />
+            <col className={showLabourFactors ? 'w-[11%]' : 'w-[19%]'} />
             <col className="w-[5%]" />
           </colgroup>
           <thead className="border-b bg-gray-50">
@@ -201,13 +250,115 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
             {components.map((component, index) => (
               <tr key={`${component.description}-${index}`}>
                 <td className="px-2 py-2">
-                  <select className={`${fieldClass} min-w-0 px-2 text-xs`} value={component.componentType} onChange={(event) => updateComponent(index, { componentType: event.target.value as BoqItemComponent['componentType'] })}>
+                  <select className={`${fieldClass} min-w-0 px-2 text-xs`} value={component.componentType} onChange={(event) => {
+                    resetComponentCustom(index)
+                    updateComponent(index, { componentType: event.target.value as BoqItemComponent['componentType'] })
+                  }}>
                     <option value="Material">Material</option>
                     <option value="Labour">Labour</option>
                     <option value="Equipment">Equipment</option>
                   </select>
                 </td>
-                <td className="px-2 py-2"><input className={`${fieldClass} min-w-0 px-2`} value={component.description} onChange={(event) => updateComponent(index, { description: event.target.value })} /></td>
+                <td className="px-2 py-2">
+                  {(() => {
+                    const isMaterial = component.componentType === 'Material'
+                    const isLabour = component.componentType === 'Labour'
+                    const options = isMaterial
+                      ? materialsQuery.data ?? []
+                      : isLabour ? laborsQuery.data ?? [] : equipmentsQuery.data ?? []
+                    const selectedId = isMaterial
+                      ? materialsQuery.data?.find((material) =>
+                        material.name === component.description && material.unitCode === component.unitCode
+                      )?.id
+                      : isLabour
+                        ? laborsQuery.data?.find((labor) => labor.trade === component.description)?.id
+                        : equipmentsQuery.data?.find((equipment) => equipment.name === component.description)?.id
+                    const custom = customComponentModes.get(index) ?? Boolean(component.description && !selectedId)
+                    const loading = isMaterial
+                      ? materialsQuery.isLoading
+                      : isLabour ? laborsQuery.isLoading : equipmentsQuery.isLoading
+
+                    if (custom) {
+                      return (
+                        <div className="space-y-1">
+                          <input
+                            className={`${fieldClass} min-w-0 px-2`}
+                            value={component.description}
+                            onChange={(event) => updateComponent(index, { description: event.target.value })}
+                            aria-label={`Custom ${component.componentType.toLowerCase()} name`}
+                            placeholder={`Custom ${component.componentType.toLowerCase()} name`}
+                          />
+                          <button
+                            type="button"
+                            className="text-xs text-brand hover:underline"
+                            onClick={() => setComponentCustom(index, false)}
+                          >
+                            Choose from master data
+                          </button>
+                        </div>
+                      )
+                    }
+
+                    const label = isMaterial ? 'Select material' : isLabour ? 'Select trade' : 'Select equipment'
+                    const display = (option: MasterDataMaterial | MasterDataLabor | MasterDataEquipment) => {
+                      if (isMaterial) {
+                        const material = option as MasterDataMaterial
+                        return `${material.name} (${material.unitCode}) — ${material.defaultUnitPrice.toFixed(2)} ETB`
+                      }
+                      if (isLabour) {
+                        const labor = option as MasterDataLabor
+                        return `${labor.trade} — ${labor.indexedWage.toFixed(2)} ETB/hr`
+                      }
+                      const equipment = option as MasterDataEquipment
+                      return `${equipment.name} — ${equipment.totalCostPerHr.toFixed(2)} ETB/hr`
+                    }
+
+                    return (
+                      <select
+                        className={`${fieldClass} min-w-0 px-2`}
+                        aria-label={label}
+                        value={selectedId ?? ''}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          if (value === 'Other') {
+                            setComponentCustom(index, true)
+                            return
+                          }
+                          setComponentCustom(index, false)
+                          if (isMaterial) {
+                            const material = materialsQuery.data?.find((entry) => entry.id === value)
+                            if (material) updateComponent(index, {
+                              description: material.name,
+                              unitCode: material.unitCode,
+                              indexedRate: material.defaultUnitPrice,
+                              additionalCost: material.defaultAdditionalCost,
+                            })
+                          } else if (isLabour) {
+                            const labor = laborsQuery.data?.find((entry) => entry.id === value)
+                            if (labor) updateComponent(index, {
+                              description: labor.trade,
+                              unitCode: 'HR',
+                              indexedRate: labor.indexedWage,
+                            })
+                          } else {
+                            const equipment = equipmentsQuery.data?.find((entry) => entry.id === value)
+                            if (equipment) updateComponent(index, {
+                              description: equipment.name,
+                              unitCode: 'HR',
+                              indexedRate: equipment.totalCostPerHr,
+                            })
+                          }
+                        }}
+                      >
+                        <option value="">{loading ? 'Loading…' : `-- ${label} --`}</option>
+                        {options.map((option) => (
+                          <option key={option.id} value={option.id}>{display(option)}</option>
+                        ))}
+                        <option value="Other">-- Other / Custom --</option>
+                      </select>
+                    )
+                  })()}
+                </td>
                 <td className="px-2 py-2">
                   <input
                     className={`${fieldClass} min-w-0 px-2 text-xs`}
@@ -234,7 +385,7 @@ function ItemEditorForm({ projectId, itemId, item, currencyCode }: {
                 <td className="px-2 py-2"><input className={`${fieldClass} min-w-0 px-2 text-right text-xs`} type="number" min="0" step="any" value={numberInputValue(component.indexedRate)} onChange={(event) => updateComponent(index, { indexedRate: Number(event.target.value) })} /></td>
                 <td className="px-2 py-2"><input className={`${fieldClass} min-w-0 px-2 text-right text-xs`} type="number" min="0" step="any" value={numberInputValue(component.additionalCost)} disabled={component.componentType !== 'Material'} onChange={(event) => updateComponent(index, { additionalCost: Number(event.target.value) })} /></td>
                 <td className="px-2 py-2">
-                  <button type="button" aria-label={`Remove component ${index + 1}`} className="text-red-600 hover:text-red-800" onClick={() => setComponents((current) => current.filter((_, componentIndex) => componentIndex !== index))}>
+                  <button type="button" aria-label={`Remove component ${index + 1}`} className="text-red-600 hover:text-red-800" onClick={() => removeComponent(index)}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </td>

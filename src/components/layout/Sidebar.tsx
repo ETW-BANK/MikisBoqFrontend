@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { FolderKanban } from 'lucide-react'
+import { Calculator, FolderKanban } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Sidebar() {
@@ -22,6 +22,18 @@ export function Sidebar() {
         >
           <FolderKanban className="h-4 w-4" />
           Projects
+        </NavLink>
+        <NavLink
+          to="/rate-analyses"
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              isActive ? 'bg-brand text-white' : 'text-gray-700 hover:bg-gray-100'
+            )
+          }
+        >
+          <Calculator className="h-4 w-4" />
+          Rate Analyses
         </NavLink>
       </nav>
     </aside>

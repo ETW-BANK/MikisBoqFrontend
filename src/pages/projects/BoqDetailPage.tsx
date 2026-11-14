@@ -190,13 +190,8 @@ function AddItemFromAnalysisDialog({
   projectId: string
   boqId: string
 }) {
-  const { data: rates = [], isLoading, error: ratesError } = useRateAnalyses()
-  const eligibleRates = rates.filter((rate) =>
-    !rate.linkedProjectId || rate.linkedProjectId.toLowerCase() === projectId.toLowerCase()
-  )
-  const hasRatesForOtherProjects = rates.some((rate) =>
-    rate.linkedProjectId && rate.linkedProjectId.toLowerCase() !== projectId.toLowerCase()
-  )
+  const { data, isLoading, error: ratesError } = useRateAnalyses(1, 100)
+  const rates = data?.items ?? []
   const [rateAnalysisId, setRateAnalysisId] = useState('')
   const [itemCode, setItemCode] = useState('')
   const [quantity, setQuantity] = useState('1')
@@ -231,35 +226,24 @@ function AddItemFromAnalysisDialog({
             <Label>Rate Analysis *</Label>
             <select value={rateAnalysisId} onChange={(e) => setRateAnalysisId(e.target.value)} className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm">
               <option value="">-- Select --</option>
-              {rates.map((rate) => {
-                const linkedElsewhere = !!rate.linkedProjectId &&
-                  rate.linkedProjectId.toLowerCase() !== projectId.toLowerCase()
-                return (
-                <option key={rate.id} value={rate.id} disabled={linkedElsewhere}>
-                  {rate.code} — {rate.description} ({rate.totalUnitRate.amount.toFixed(2)} {rate.totalUnitRate.currencyCode}/{rate.unitCode})
-                  {linkedElsewhere ? ` — linked to project ${rate.linkedProjectId}` : ''}
+              {rates.map((rate) => (
+                <option key={rate.id} value={rate.id}>
+                  {rate.code} — {rate.description} ({rate.unitCode})
                 </option>
-                )
-              })}
+              ))}
             </select>
           </div>
           {isLoading && <p className="text-sm text-gray-500">Loading rate analyses...</p>}
           {ratesError && <ErrorMessage error={ratesError} />}
-          {!isLoading && !ratesError && eligibleRates.length === 0 && rates.length === 0 && (
+          {!isLoading && !ratesError && rates.length === 0 && (
             <p className="text-sm text-amber-700">No rate analyses were returned by the API.</p>
-          )}
-          {!isLoading && !ratesError && eligibleRates.length === 0 && hasRatesForOtherProjects && (
-            <p className="text-sm text-amber-700">
-              All rate analyses are linked to another project and cannot be added here. This BOQ belongs to project {projectId}.
-              Select a BOQ under the linked project, or unlink/reassign the rate analysis before adding it here.
-            </p>
           )}
           <div><Label>Item Code *</Label><Input value={itemCode} onChange={(e) => setItemCode(e.target.value)} required /></div>
           <div><Label>Quantity *</Label><Input type="number" min="0.000001" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} required /></div>
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>Cancel</Button>
-            <Button type="submit" disabled={mutation.isPending || eligibleRates.length === 0}>
+            <Button type="submit" disabled={mutation.isPending || rates.length === 0}>
               {mutation.isPending ? 'Adding...' : 'Add Item'}
             </Button>
           </div>

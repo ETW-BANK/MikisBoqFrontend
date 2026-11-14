@@ -11,9 +11,9 @@ import { useAuthStore } from '@/stores/authStore'
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
 
-  const { data: rateAnalyses = [] } = useQuery({
+  const { data: rateAnalysesPage } = useQuery({
     queryKey: ['rate-analyses'],
-    queryFn: listRateAnalyses,
+    queryFn: () => listRateAnalyses(1, 1),
   })
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
@@ -34,7 +34,7 @@ export function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard
           label="Rate Analyses"
-          value={rateAnalyses.length}
+          value={rateAnalysesPage?.totalCount ?? 0}
           icon={TrendingUp}
           to="/rate-analyses"
         />
