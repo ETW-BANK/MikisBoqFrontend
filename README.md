@@ -4,16 +4,16 @@ This template provides a minimal setup to get React working in Vite with HMR and
 
 ## Local BOQ workflow
 
-The frontend connects to the unauthenticated local API at `https://localhost:7292/api`. Start the ASP.NET API first, then run:
+The frontend connects to the live API at `https://mikisapi.runasp.net/api`. Run the frontend with:
 
 ```sh
 npm install
 npm run dev
 ```
 
-Vite proxies `/api` requests to `https://localhost:7292`, so browser API calls use the backend's local HTTPS endpoint without requiring CORS configuration. The development proxy accepts the local ASP.NET development certificate. Set `VITE_API_BASE_URL` to override the API base URL.
+During development, Vite proxies `/api` requests to `https://mikisapi.runasp.net`. In production, the frontend sends requests directly to `https://mikisapi.runasp.net/api`. Set `VITE_API_BASE_URL` to override the API base URL.
 
-The current workflow is intended for local development. A production build defaults to `https://localhost:7292/api`, which is only reachable by a browser on the same machine as the API; GitHub Pages is not a usable deployment target with this local backend URL.
+The live API is documented at `https://mikisapi.runasp.net/swagger/index.html`. Production hosting must be allowed by the API's CORS configuration.
 
 Currently, two official plugins are available:
 

@@ -14,9 +14,8 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://localhost:7292',
+        target: 'https://mikisapi.runasp.net',
         changeOrigin: true,
-        secure: false,
       },
     },
   },
