@@ -1,5 +1,4 @@
 import { apiClient } from './client'
-import { downloadFile } from './download'
 
 export interface MoneyDto {
   amount: number
@@ -15,12 +14,12 @@ export interface RateComponentDto {
   indexedRate: MoneyDto
   amount: MoneyDto
   materialCode: string | null
-  additionalCost: MoneyDto | null      // NEW
+  additionalCost: MoneyDto | null
 }
 
 export interface RateAnalysisDto {
   id: string
-  linkedProjectId: string | null       // NEW
+  linkedProjectId: string | null
   code: string
   description: string
   unitCode: string
@@ -57,92 +56,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function isMoneyDto(value: unknown): value is MoneyDto {
-  return isRecord(value) &&
-    typeof value.amount === 'number' &&
-    typeof value.currencyCode === 'string'
-}
-
-function isRateComponentDto(value: unknown): value is RateComponentDto {
-  return isRecord(value) &&
-    typeof value.componentType === 'string' &&
-    typeof value.description === 'string' &&
-    typeof value.unitCode === 'string' &&
-    typeof value.quantity === 'number' &&
-    typeof value.utilizationFactor === 'number' &&
-    isMoneyDto(value.indexedRate) &&
-    isMoneyDto(value.amount) &&
-    (typeof value.materialCode === 'string' || value.materialCode === null) &&
-    (isMoneyDto(value.additionalCost) || value.additionalCost === null)
-}
-
-function isRateAnalysisDto(value: unknown): value is RateAnalysisDto {
-  return isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.code === 'string' &&
-    typeof value.description === 'string' &&
-    typeof value.unitCode === 'string' &&
-    (typeof value.linkedProjectId === 'string' || value.linkedProjectId === null) &&
-    (typeof value.remark === 'string' || value.remark === null) &&
-    typeof value.totalWorksToBeExecuted === 'number' &&
-    typeof value.assumedTimeInHours === 'number' &&
-    typeof value.performanceRatePerHour === 'number' &&
-    Array.isArray(value.components) &&
-    value.components.every(isRateComponentDto) &&
-    isMoneyDto(value.directMaterialUnitCost) &&
-    isMoneyDto(value.directLabourUnitCost) &&
-    isMoneyDto(value.directEquipmentUnitCost) &&
-    isMoneyDto(value.directUnitCost) &&
-    isMoneyDto(value.overheadAndProfit) &&
-    isMoneyDto(value.totalUnitRate)
-}
-
-export async function listRateAnalyses(page = 1, size = 20): Promise<RateAnalysisPage> {
+// 1. LIST RATE ANALYSES (Uses the raw array and paginates locally)
+export async function listRateAnalyses(page = 1, size = 20, search = ''): Promise<RateAnalysisPage> {
+  // We fetch ALL items matching the search (the DB has ~822 items, which is small enough to handle client-side)
   const { data } = await apiClient.get<unknown>('/MasterData/rate-analyses', {
-    params: { page, size },
+    params: { search, page: 1, size: 2000 }, // Fetch all
   })
-  return extractRateAnalysisListItems(data)
-}
 
-function extractRateAnalysisListItems(response: unknown): RateAnalysisPage {
-  if (!isRecord(response) || !Array.isArray(response.items)) {
-    throw new Error('The API returned an unsupported rate-analysis page response.')
+  if (!Array.isArray(data)) {
+    throw new Error('The API returned an unsupported rate-analysis response. Expected a list.')
   }
-  const { items, totalCount, page, size, totalPages } = response
-  if (
-    typeof totalCount !== 'number' ||
-    typeof page !== 'number' ||
-    typeof size !== 'number' ||
-    typeof totalPages !== 'number'
-  ) {
-    throw new Error('The API returned incomplete rate-analysis pagination information.')
-  }
+
+  const allItems = data as RateAnalysisListItem[]
+  
+  // Now we paginate in memory
+  const totalCount = allItems.length
+  const totalPages = Math.ceil(totalCount / size)
+  const startIndex = (page - 1) * size
+  const paginatedItems = allItems.slice(startIndex, startIndex + size)
+
   return {
-    items: items.map((item) => {
-    if (!isRecord(item) ||
-      typeof item.id !== 'string' ||
-      typeof item.code !== 'string' ||
-      typeof item.description !== 'string' ||
-      typeof item.unitCode !== 'string') {
-      throw new Error('The API returned a rate analysis with an unsupported format.')
-    }
-    return {
-      id: item.id,
-      code: item.code,
-      description: item.description,
-      unitCode: item.unitCode,
-    }
-    }),
+    items: paginatedItems,
     totalCount,
     page,
     size,
-    totalPages,
+    totalPages: totalPages === 0 ? 1 : totalPages,
   }
 }
 
+// 2. GET SINGLE RATE ANALYSIS
 export async function getRateAnalysis(id: string): Promise<RateAnalysisDto> {
   const { data } = await apiClient.get<unknown>(`/Boq/rate-analyses/${id}`)
-  if (isRateAnalysisDto(data)) return data
+  
   if (!isRecord(data) || !Array.isArray(data.components)) {
     throw new Error('The API returned a rate analysis in an unsupported format.')
   }
@@ -156,7 +101,10 @@ export async function getRateAnalysis(id: string): Promise<RateAnalysisDto> {
     const number = typeof value === 'number' ? value : Number(value)
     return Number.isFinite(number) ? number : fallback
   }
+  
   const unitCode = readString(data, 'unitCode')
+  const money = (amount: number): MoneyDto => ({ amount, currencyCode: 'ETB' })
+
   const components = data.components.map((component): RateComponentDto => {
     if (!isRecord(component)) throw new Error('The API returned an invalid rate-analysis component.')
     const componentType = readString(component, 'componentType')
@@ -164,15 +112,11 @@ export async function getRateAnalysis(id: string): Promise<RateAnalysisDto> {
     const componentUnitCode = readString(component, 'unitCode', unitCode)
     const quantity = readNumber(component, 'quantity')
     const utilizationFactor = readNumber(component, 'utilizationFactor', 1)
-    const rateValue = component.indexedRate ?? component.IndexedRate
-    const indexedRateAmount = isRecord(rateValue)
-      ? readNumber(rateValue, 'amount')
-      : typeof rateValue === 'number' ? rateValue : Number(rateValue) || 0
-    const additionalCostValue = component.additionalCost ?? component.AdditionalCost
-    const additionalCostAmount = isRecord(additionalCostValue)
-      ? readNumber(additionalCostValue, 'amount')
-      : typeof additionalCostValue === 'number' ? additionalCostValue : Number(additionalCostValue) || 0
-    const money = (amount: number): MoneyDto => ({ amount, currencyCode: 'ETB' })
+    
+    // In the new backend, indexedRate and additionalCost are just numbers, not MoneyDto objects
+    const indexedRateAmount = readNumber(component, 'indexedRate')
+    const additionalCostAmount = readNumber(component, 'additionalCost')
+    
     return {
       componentType,
       description,
@@ -185,12 +129,12 @@ export async function getRateAnalysis(id: string): Promise<RateAnalysisDto> {
       additionalCost: money(additionalCostAmount),
     }
   })
+
   const totalWorksToBeExecuted = readNumber(data, 'totalWorks', 1)
   const assumedTimeInHours = readNumber(data, 'assumedTimeHours', 1)
-  const performanceRatePerHour = assumedTimeInHours > 0
-    ? totalWorksToBeExecuted / assumedTimeInHours
-    : 0
-  const zero = { amount: 0, currencyCode: 'ETB' }
+  const performanceRatePerHour = assumedTimeInHours > 0 ? totalWorksToBeExecuted / assumedTimeInHours : 0
+  const zero = money(0)
+
   return {
     id: readString(data, 'id', id),
     linkedProjectId: null,
@@ -222,7 +166,7 @@ export interface RateComponentInput {
   indexedRate?: number
   materialCode?: string
   overrideRate?: number
-  additionalCost?: number               // NEW
+  additionalCost?: number
 }
 
 export interface CreateRateAnalysisRequest {
@@ -232,7 +176,7 @@ export interface CreateRateAnalysisRequest {
   totalWorks: number
   assumedTimeHours: number
   overheadPercent: number
-  linkedProjectId?: string | null        // NEW
+  linkedProjectId?: string | null
   remark?: string
   components: RateComponentInput[]
 }
@@ -262,16 +206,4 @@ export async function updateRateAnalysis(
     })),
   })
   return getRateAnalysis(id)
-}
-
-export async function deleteRateAnalysis(id: string): Promise<void> {
-  await apiClient.delete(`/RateAnalyses/${id}`)
-}
-
-export async function generateRateAnalysisReport(id: string, format: 'pdf' | 'excel'): Promise<void> {
-  await downloadFile(
-    `/RateAnalyses/${id}/generate-report`,
-    format,
-    `rate-analysis-${id}.${format === 'excel' ? 'xlsx' : 'pdf'}`
-  )
 }
